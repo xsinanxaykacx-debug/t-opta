@@ -181,17 +181,25 @@ def _segment_report(bets, value_column, edges, labels):
 
 
 def odds_bucket_report(bets):
+    # Use each bet's actual decimal odds. Intervals are left-closed,
+    # right-open: 1.60 belongs to the 1.60-<1.70 bucket, not the prior one.
     return _segment_report(
         bets=bets,
         value_column="odds",
-        edges=[1.0, 1.30, 1.50, 1.70, 2.00, 2.50, np.inf],
+        edges=[
+            1.0, 1.30, 1.50, 1.60, 1.70, 1.80,
+            1.90, 2.00, 2.10, np.inf,
+        ],
         labels=[
             "1.01-1.29",
             "1.30-1.49",
-            "1.50-1.69",
-            "1.70-1.99",
-            "2.00-2.49",
-            "2.50+",
+            "1.50-<1.60",
+            "1.60-<1.70",
+            "1.70-<1.80",
+            "1.80-<1.90",
+            "1.90-<2.00",
+            "2.00-<2.10",
+            "2.10+",
         ],
     )
 
