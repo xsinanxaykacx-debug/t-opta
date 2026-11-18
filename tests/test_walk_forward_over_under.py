@@ -2,6 +2,8 @@ import numpy as np
 
 from scripts.walk_forward_over_under import (
     HistGradientBoostingCandidate,
+    build_odds_provenance_report,
+    platt_scale_probabilities,
     build_fold_slices,
     calculate_policy_rows,
 )
@@ -76,6 +78,10 @@ def test_confidence_report_measures_selective_accuracy_and_coverage():
     assert by_cutoff[0.60]["top_n_matches"] == 2
     assert by_cutoff[0.60]["top_n_correct"] == 2
     assert np.isclose(by_cutoff[0.60]["top_n_accuracy"], 1.0)
+    assert by_cutoff[0.60]["over_matches"] == 1
+    assert by_cutoff[0.60]["under_matches"] == 1
+    assert by_cutoff[0.60]["top_n_over_correct"] == 1
+    assert by_cutoff[0.60]["top_n_under_correct"] == 1
     assert by_cutoff[0.80]["matches"] == 2
     assert np.isclose(by_cutoff[0.80]["mean_confidence"], 0.90)
 
@@ -132,3 +138,48 @@ def test_hist_gradient_boosting_candidate_is_odds_independent_and_calibrated():
     assert np.isfinite(probabilities).all()
     assert ((probabilities > 0.0) & (probabilities < 1.0)).all()
     assert not any(column.startswith("odds_") for column in train.columns)
+
+
+
+def test_platt_calibration_is_bounded_and_monotonic():
+    calibration_probabilities = np.linspace(0.05, 0.95, 200)
+    calibration_labels = (calibration_probabilities >= 0.52).astype(int)
+    target_probabilities = np.array([0.20, 0.50, 0.80])
+
+    calibrated = platt_scale_probabilities(
+        calibration_probabilities,
+        calibration_labels,
+        target_probabilities,
+    )
+
+    assert np.isfinite(calibrated).all()
+    assert ((calibrated > 0.0) & (calibrated < 1.0)).all()
+    assert np.all(np.diff(calibrated) > 0)
+
+
+def test_odds_provenance_report_groups_source_files_and_match_status():
+    import pandas as pd
+
+    frame = pd.DataFrame({
+        "Date": pd.to_datetime([
+            "2024-01-01T12:00:00Z",
+            "2024-01-02T12:00:00Z",
+            "2024-01-03T12:00:00Z",
+        ], utc=True),
+        "League": ["L1", "L1", "L2"],
+        "odds_source_file": ["D2 (4).csv", "D2 (4).csv", "E0.csv"],
+        "odds_match_status": ["matched", "unmatched", "matched"],
+        "odds_Avg>2.5": [1.90, np.nan, 2.00],
+        "odds_Avg<2.5": [1.90, np.nan, 1.80],
+        "odds_B365>2.5": [1.95, np.nan, 2.05],
+        "odds_B365<2.5": [1.85, np.nan, 1.75],
+    })
+
+    report = build_odds_provenance_report(frame)
+    by_source = report.set_index("odds_source_file")
+
+    assert by_source.loc["D2 (4).csv", "matches"] == 2
+    assert by_source.loc["D2 (4).csv", "matched_rows"] == 1
+    assert np.isclose(by_source.loc["D2 (4).csv", "match_rate"], 0.5)
+    assert by_source.loc["D2 (4).csv", "avg_ou_pair_rows"] == 1
+    assert by_source.loc["E0.csv", "b365_ou_pair_rows"] == 1
