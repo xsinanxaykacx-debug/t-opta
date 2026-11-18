@@ -1097,6 +1097,11 @@ def policy_check_passes(results):
     )
 
 
+def final_test_is_openable(policy_passed):
+    """Require both a clean validation gate and a genuinely fresh final holdout."""
+    return bool(policy_passed and POLICY_CHECK_CLEAN and FINAL_HOLDOUT_CLEAN)
+
+
 # ============================================================
 # 10. ANA AKIŞ
 # ============================================================
@@ -1187,6 +1192,15 @@ def main(path):
 
     output_dir = Path("t_opta_output")
     output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "feature_audit.txt").write_text(
+        "CURRENT-MATCH Home_xG/Away_xG are not direct model inputs; they update team/league history only after all fixtures in the same UTC day are featured.\n"
+        "FTHG/FTAG are target labels only.\n"
+        "Train, calibration, policy-select, policy-check and final-test boundaries are UTC-day aligned.\n"
+        "Odds source timestamps are not present; pre-kickoff availability cannot be independently verified.\n"
+        "Policy Check is marked non-clean after exploratory comparisons.\n"
+        "The source CSV exactly matches the legacy-scored dataset; its later holdout period overlaps 2025-10-13 through 2026-03-14.\n",
+        encoding="utf-8",
+    )
 
     print("\n" + "=" * 70)
 
