@@ -1,0 +1,69 @@
+name: experiment-data-audit
+
+on:
+  push:
+    branches:
+      - experiments/three-model-comparison
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install pandas
+      - name: Inspect xgo dataset without modifying it
+        run: |
+          python - <<'PY'
+          import pandas as pd
+          from pathlib import Path
+
+          path = Path("xgo.csv")
+          if not path.exists():
+              raise SystemExit("xgo.csv is missing")
+
+          df = pd.read_csv(path, encoding="latin-1", low_memory=False)
+          print("RAW_ROWS", len(df))
+          print("RAW_COLUMNS", len(df.columns))
+          print("COLUMNS", list(df.columns))
+          for col in ("Date", "League", "HomeTeam", "AwayTeam",
+                      "Home_xG", "Away_xG", "FTHG", "FTAG",
+                      "odds_Avg>2.5", "odds_Avg<2.5",
+                      "odds_B365>2.5", "odds_B365<2.5",
+                      "AvgC", "B365C", "MaxC", "PC"):
+              if col in df.columns:
+                  print("COLUMN", col, "NON_NULL", int(df[col].notna().sum()),
+                        "DTYPE", str(df[col].dtype))
+
+          required = ["Date", "League", "HomeTeam", "AwayTeam",
+                      "Home_xG", "Away_xG", "FTHG", "FTAG"]
+          missing = [c for c in required if c not in df.columns]
+          if missing:
+              raise SystemExit(f"Missing required columns: {missing}")
+
+          clean = df.copy()
+          clean["Date"] = pd.to_datetime(clean["Date"], errors="coerce", utc=True)
+          for col in ("Home_xG", "Away_xG", "FTHG", "FTAG"):
+              clean[col] = pd.to_numeric(clean[col], errors="coerce")
+          clean = clean.dropna(subset=required).copy()
+          clean = clean.sort_values(
+              ["Date", "League", "HomeTeam", "AwayTeam"],
+              kind="mergesort"
+          ).reset_index(drop=True)
+          print("CLEAN_ROWS", len(clean))
+          print("DATE_MIN", clean["Date"].min().isoformat())
+          print("DATE_MAX", clean["Date"].max().isoformat())
+          print("DUPLICATE_FIXTURE_KEYS", int(clean.duplicated(
+              ["Date", "League", "HomeTeam", "AwayTeam"]
+          ).sum()))
+          print("OVER_RATE", float(
+              ((clean["FTHG"] + clean["FTAG"]) > 2.5).mean()
+          ))
+          print("UNDER_RATE", float(
+              ((clean["FTHG"] + clean["FTAG"]) <= 2.5).mean()
+          ))
+          print("DATA_AUDIT_OK")
+          PY
