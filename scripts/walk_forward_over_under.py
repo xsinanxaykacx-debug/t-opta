@@ -780,6 +780,7 @@ def run_walk_forward(
     policy_rows = []
     confidence_rows = []
     prediction_rows = []
+    recent_blend_weight_rows = []
     oof = {
         "y": [], "blend": [], "historical_xg": [], "market": [],
         "poisson": [], "poisson_cal": [], "poisson_platt": [], "goal_poisson": [], "xg_goal_blend": [], "negative_binomial": [], "hgb": [], "logistic": [], "recent_blend": [],
@@ -809,6 +810,17 @@ def run_walk_forward(
         logistic_model.calibrate(calibration)
 
         recent_blend_model = RecentPoissonBlendCandidate().calibrate(calibration)
+        recent_blend_weight_rows.append({
+            "fold": fold_number,
+            "calibration_log_loss": recent_blend_model.calibration_log_loss,
+            **{
+                component: float(weight)
+                for component, weight in zip(
+                    RecentPoissonBlendCandidate.COMPONENTS,
+                    recent_blend_model.weights,
+                )
+            },
+        })
 
         negative_binomial_model = NegativeBinomialCandidate().fit(train)
 
@@ -1072,6 +1084,11 @@ def run_walk_forward(
     confidence.to_csv(output_dir / "walk_forward_confidence.csv", index=False, encoding="utf-8-sig")
     prediction_diagnostics.to_csv(output_dir / "walk_forward_predictions.csv", index=False, encoding="utf-8-sig")
     error_analysis.to_csv(output_dir / "walk_forward_error_analysis.csv", index=False, encoding="utf-8-sig")
+    pd.DataFrame(recent_blend_weight_rows).to_csv(
+        output_dir / "walk_forward_recent_blend_weights.csv",
+        index=False,
+        encoding="utf-8-sig",
+    )
     odds_provenance.to_csv(output_dir / "walk_forward_odds_provenance.csv", index=False, encoding="utf-8-sig")
 
     print("\nOOF metrics (fold=0 is pooled out-of-fold):")
