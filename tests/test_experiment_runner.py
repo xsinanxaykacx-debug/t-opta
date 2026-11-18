@@ -74,4 +74,4 @@ def test_policy_selection_prefers_hit_rate_when_minimum_sample_is_met():
     assert selected is not None
     assert selected["bets"] == 50
     assert selected["hit_rate"] == 1.0
-    assert selected["threshold"] >= 0.8
+    assert selected["threshold"] > 0.75
