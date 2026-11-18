@@ -782,10 +782,10 @@ def run_walk_forward(
     prediction_rows = []
     oof = {
         "y": [], "blend": [], "historical_xg": [], "market": [],
-        "poisson": [], "poisson_cal": [], "poisson_platt": [], "goal_poisson": [], "xg_goal_blend": [], "negative_binomial": [], "hgb": [], "logistic": [],
+        "poisson": [], "poisson_cal": [], "poisson_platt": [], "goal_poisson": [], "xg_goal_blend": [], "negative_binomial": [], "hgb": [], "logistic": [], "recent_blend": [],
     }
     oof_all = {
-        "y": [], "historical_xg": [], "poisson": [], "poisson_cal": [], "poisson_platt": [], "goal_poisson": [], "xg_goal_blend": [], "negative_binomial": [], "hgb": [], "logistic": [],
+        "y": [], "historical_xg": [], "poisson": [], "poisson_cal": [], "poisson_platt": [], "goal_poisson": [], "xg_goal_blend": [], "negative_binomial": [], "hgb": [], "logistic": [], "recent_blend": [],
     }
 
     for fold_number, (train_slice, calibration_slice, validation_slice) in enumerate(windows, 1):
@@ -808,6 +808,8 @@ def run_walk_forward(
         logistic_model = LogisticOverUnderCandidate().fit(train)
         logistic_model.calibrate(calibration)
 
+        recent_blend_model = RecentPoissonBlendCandidate().calibrate(calibration)
+
         negative_binomial_model = NegativeBinomialCandidate().fit(train)
 
         y = historical_model._y(validation)
@@ -816,6 +818,7 @@ def run_walk_forward(
         p_historical = historical_model.predict_proba(validation)
         p_hgb = hgb_model.predict_proba(validation)
         p_logistic = logistic_model.predict_proba(validation)
+        p_recent_blend = recent_blend_model.predict_proba(validation)
         p_poisson = validation["p_poisson"].to_numpy(dtype=float)
         p_goal_poisson = validation["p_poisson_goals"].to_numpy(dtype=float)
         p_xg_goal_blend = np.clip(0.5 * p_poisson + 0.5 * p_goal_poisson, 1e-6, 1.0 - 1e-6)
@@ -854,6 +857,7 @@ def run_walk_forward(
                 "NEGATIVE_BINOMIAL": p_negative_binomial,
                 "HIST_GB": p_hgb,
                 "LOGISTIC": p_logistic,
+                "RECENT_POISSON_BLEND": p_recent_blend,
             },
             fold_number,
         ))
@@ -872,6 +876,7 @@ def run_walk_forward(
             _score_row(y, p_negative_binomial, market_valid, "NEGATIVE_BINOMIAL", fold_number),
             _score_row(y, p_hgb, market_valid, "HIST_GB", fold_number),
             _score_row(y, p_logistic, market_valid, "LOGISTIC", fold_number),
+            _score_row(y, p_recent_blend, market_valid, "RECENT_POISSON_BLEND", fold_number),
             _score_row(y, p_historical, np.ones(len(y), dtype=bool), "HISTORICAL_XG", fold_number, "ALL_MATCHES"),
             _score_row(y, p_poisson, np.ones(len(y), dtype=bool), "POISSON", fold_number, "ALL_MATCHES"),
             _score_row(y, p_poisson_cal, np.ones(len(y), dtype=bool), "POISSON_CAL", fold_number, "ALL_MATCHES"),
@@ -881,6 +886,7 @@ def run_walk_forward(
             _score_row(y, p_negative_binomial, np.ones(len(y), dtype=bool), "NEGATIVE_BINOMIAL", fold_number, "ALL_MATCHES"),
             _score_row(y, p_hgb, np.ones(len(y), dtype=bool), "HIST_GB", fold_number, "ALL_MATCHES"),
             _score_row(y, p_logistic, np.ones(len(y), dtype=bool), "LOGISTIC", fold_number, "ALL_MATCHES"),
+            _score_row(y, p_recent_blend, np.ones(len(y), dtype=bool), "RECENT_POISSON_BLEND", fold_number, "ALL_MATCHES"),
         ])
 
         for model_name, probabilities in (
@@ -895,6 +901,7 @@ def run_walk_forward(
             ("NEGATIVE_BINOMIAL", p_negative_binomial),
             ("HIST_GB", p_hgb),
             ("LOGISTIC", p_logistic),
+            ("RECENT_POISSON_BLEND", p_recent_blend),
         ):
             confidence_rows.extend(calculate_confidence_rows(
                 y[market_valid],
@@ -913,6 +920,7 @@ def run_walk_forward(
             ("NEGATIVE_BINOMIAL", p_negative_binomial),
             ("HIST_GB", p_hgb),
             ("LOGISTIC", p_logistic),
+            ("RECENT_POISSON_BLEND", p_recent_blend),
         ):
             confidence_rows.extend(calculate_confidence_rows(
                 y,
@@ -958,6 +966,7 @@ def run_walk_forward(
         oof["negative_binomial"].extend(p_negative_binomial[valid_indices].tolist())
         oof["hgb"].extend(p_hgb[valid_indices].tolist())
         oof["logistic"].extend(p_logistic[valid_indices].tolist())
+        oof["recent_blend"].extend(p_recent_blend[valid_indices].tolist())
         oof_all["y"].extend(y.tolist())
         oof_all["historical_xg"].extend(p_historical.tolist())
         oof_all["poisson"].extend(p_poisson.tolist())
@@ -968,6 +977,7 @@ def run_walk_forward(
         oof_all["negative_binomial"].extend(p_negative_binomial.tolist())
         oof_all["hgb"].extend(p_hgb.tolist())
         oof_all["logistic"].extend(p_logistic.tolist())
+        oof_all["recent_blend"].extend(p_recent_blend.tolist())
 
         print(
             f"Fold {fold_number:02d}: train={len(train)} "
@@ -989,6 +999,7 @@ def run_walk_forward(
         _score_row(y_all, np.asarray(oof["negative_binomial"]), all_mask, "NEGATIVE_BINOMIAL", 0),
         _score_row(y_all, np.asarray(oof["hgb"]), all_mask, "HIST_GB", 0),
         _score_row(y_all, np.asarray(oof["logistic"]), all_mask, "LOGISTIC", 0),
+        _score_row(y_all, np.asarray(oof["recent_blend"]), all_mask, "RECENT_POISSON_BLEND", 0),
     ])
 
     y_all_matches = np.asarray(oof_all["y"], dtype=int)
@@ -1003,6 +1014,7 @@ def run_walk_forward(
         _score_row(y_all_matches, np.asarray(oof_all["negative_binomial"]), all_match_mask, "NEGATIVE_BINOMIAL", 0, "ALL_MATCHES"),
         _score_row(y_all_matches, np.asarray(oof_all["hgb"]), all_match_mask, "HIST_GB", 0, "ALL_MATCHES"),
         _score_row(y_all_matches, np.asarray(oof_all["logistic"]), all_match_mask, "LOGISTIC", 0, "ALL_MATCHES"),
+        _score_row(y_all_matches, np.asarray(oof_all["recent_blend"]), all_match_mask, "RECENT_POISSON_BLEND", 0, "ALL_MATCHES"),
     ])
 
     metrics = pd.DataFrame(metric_rows)
@@ -1020,6 +1032,7 @@ def run_walk_forward(
         ("NEGATIVE_BINOMIAL", np.asarray(oof["negative_binomial"], dtype=float)),
         ("HIST_GB", np.asarray(oof["hgb"], dtype=float)),
         ("LOGISTIC", np.asarray(oof["logistic"], dtype=float)),
+        ("RECENT_POISSON_BLEND", np.asarray(oof["recent_blend"], dtype=float)),
     ):
         confidence_rows.extend(calculate_confidence_rows(
             y_all,
@@ -1038,6 +1051,7 @@ def run_walk_forward(
         ("NEGATIVE_BINOMIAL", np.asarray(oof_all["negative_binomial"], dtype=float)),
         ("HIST_GB", np.asarray(oof_all["hgb"], dtype=float)),
         ("LOGISTIC", np.asarray(oof_all["logistic"], dtype=float)),
+        ("RECENT_POISSON_BLEND", np.asarray(oof_all["recent_blend"], dtype=float)),
     ):
         confidence_rows.extend(calculate_confidence_rows(
             y_all_matches,
