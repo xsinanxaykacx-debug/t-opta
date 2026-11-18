@@ -6,8 +6,49 @@ from diagnostics import (
     market_model_brier_report,
     reliability_report,
     run_diagnostics,
+    odds_bucket_report,
     _bet_rows,
 )
+
+def test_odds_buckets_use_actual_decimal_odds_and_keep_sides_separate():
+    bets = pd.DataFrame({
+        "side": [
+            "OVER", "OVER", "OVER", "OVER", "OVER",
+            "OVER", "OVER", "OVER", "OVER", "UNDER",
+            "UNDER", "UNDER",
+        ],
+        "odds": [
+            1.44, 1.58, 1.60, 1.72, 1.86,
+            1.98, 2.05, 2.10, 2.12, 1.44,
+            1.86, 1.98,
+        ],
+        "edge": [0.06] * 12,
+        "won": [1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0],
+    })
+
+    report = odds_bucket_report(bets)
+
+    over = report.loc[report["side"] == "OVER"].set_index("bucket")
+    under = report.loc[report["side"] == "UNDER"].set_index("bucket")
+
+    assert over.loc["1.30-1.49", "bets"] == 1
+    assert over.loc["1.50-<1.60", "bets"] == 1
+    assert over.loc["1.60-<1.70", "bets"] == 1
+    assert over.loc["1.70-<1.80", "bets"] == 1
+    assert over.loc["1.80-<1.90", "bets"] == 1
+    assert over.loc["1.90-<2.00", "bets"] == 1
+    assert over.loc["2.00-<2.10", "bets"] == 1
+    assert over.loc["2.10+", "bets"] == 1
+
+    assert under.loc["1.30-1.49", "bets"] == 1
+    assert under.loc["1.80-<1.90", "bets"] == 1
+    assert under.loc["1.90-<2.00", "bets"] == 1
+
+    # Exact boundary values are assigned once, to the bucket starting there.
+    assert over.loc["1.60-<1.70", "avg_odds"] == 1.60
+    assert over.loc["2.00-<2.10", "avg_odds"] == 2.05
+    assert over.loc["2.10+", "avg_odds"] == 2.12
+
 
 
 def test_market_and_model_brier_use_same_valid_market_rows():
