@@ -13,6 +13,7 @@ import sys
 import numpy as np
 import pandas as pd
 from sklearn.isotonic import IsotonicRegression
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,7 @@ from BOT import (  # noqa: E402
     N_TRAIN,
     BlendModel,
     HistoricalXGModel,
+    BlendModel,
     add_leakage_safe_features,
     market_data,
     require_columns,
@@ -34,6 +36,56 @@ DEFAULT_CALIBRATION_SIZE = 500
 DEFAULT_VALIDATION_SIZE = 300
 DEFAULT_FOLDS = 10
 DEFAULT_OUTPUT_DIR = ROOT / "reports" / "walk_forward"
+
+
+
+class HistGradientBoostingCandidate:
+    """Nonlinear historical-xG research candidate; never uses bookmaker odds."""
+
+    def __init__(self):
+        self.clf = HistGradientBoostingClassifier(
+            learning_rate=0.04,
+            max_iter=150,
+            max_leaf_nodes=7,
+            min_samples_leaf=50,
+            l2_regularization=5.0,
+            early_stopping=False,
+            random_state=42,
+        )
+        self.calibrator = None
+
+    @staticmethod
+    def _X(df):
+        return HistoricalXGModel._X(df)
+
+    @staticmethod
+    def _y(df):
+        return BlendModel._y(df)
+
+    def fit(self, df):
+        self.clf.fit(self._X(df), self._y(df))
+        return self
+
+    def raw_predict(self, df):
+        return self.clf.predict_proba(self._X(df))[:, 1]
+
+    def calibrate(self, df):
+        y = self._y(df)
+        if np.unique(y).size != 2:
+            raise ValueError("HGB calibration requires both outcome classes.")
+        self.calibrator = IsotonicRegression(
+            y_min=0.001,
+            y_max=0.999,
+            out_of_bounds="clip",
+        )
+        self.calibrator.fit(self.raw_predict(df), y)
+        return self
+
+    def predict_proba(self, df):
+        probabilities = self.raw_predict(df)
+        if self.calibrator is not None:
+            probabilities = self.calibrator.predict(probabilities)
+        return np.clip(probabilities, 1e-6, 1.0 - 1e-6)
 
 
 def build_fold_slices(
@@ -238,10 +290,10 @@ def run_walk_forward(
     confidence_rows = []
     oof = {
         "y": [], "blend": [], "historical_xg": [], "market": [],
-        "poisson": [], "poisson_cal": [],
+        "poisson": [], "poisson_cal": [], "hgb": [],
     }
     oof_all = {
-        "y": [], "historical_xg": [], "poisson": [], "poisson_cal": [],
+        "y": [], "historical_xg": [], "poisson": [], "poisson_cal": [], "hgb": [],
     }
 
     for fold_number, (train_slice, calibration_slice, validation_slice) in enumerate(windows, 1):
@@ -257,10 +309,15 @@ def run_walk_forward(
         historical_model.fit(train)
         historical_model.calibrate(calibration)
 
+        hgb_model = HistGradientBoostingCandidate()
+        hgb_model.fit(train)
+        hgb_model.calibrate(calibration)
+
         y = historical_model._y(validation)
         y_calibration = historical_model._y(calibration)
         p_blend = blend_model.predict_proba(validation)
         p_historical = historical_model.predict_proba(validation)
+        p_hgb = hgb_model.predict_proba(validation)
         p_poisson = validation["p_poisson"].to_numpy(dtype=float)
         p_market, over_odds, under_odds, market_valid = market_data(validation)
 
@@ -284,9 +341,11 @@ def run_walk_forward(
             _score_row(y, p_market, market_valid, "MARKET", fold_number),
             _score_row(y, p_poisson, market_valid, "POISSON", fold_number),
             _score_row(y, p_poisson_cal, market_valid, "POISSON_CAL", fold_number),
+            _score_row(y, p_hgb, market_valid, "HIST_GB", fold_number),
             _score_row(y, p_historical, np.ones(len(y), dtype=bool), "HISTORICAL_XG", fold_number, "ALL_MATCHES"),
             _score_row(y, p_poisson, np.ones(len(y), dtype=bool), "POISSON", fold_number, "ALL_MATCHES"),
             _score_row(y, p_poisson_cal, np.ones(len(y), dtype=bool), "POISSON_CAL", fold_number, "ALL_MATCHES"),
+            _score_row(y, p_hgb, np.ones(len(y), dtype=bool), "HIST_GB", fold_number, "ALL_MATCHES"),
         ])
 
         for model_name, probabilities in (
@@ -295,6 +354,7 @@ def run_walk_forward(
             ("MARKET", p_market),
             ("POISSON", p_poisson),
             ("POISSON_CAL", p_poisson_cal),
+            ("HIST_GB", p_hgb),
         ):
             confidence_rows.extend(calculate_confidence_rows(
                 y[market_valid],
@@ -307,6 +367,7 @@ def run_walk_forward(
             ("HISTORICAL_XG", p_historical),
             ("POISSON", p_poisson),
             ("POISSON_CAL", p_poisson_cal),
+            ("HIST_GB", p_hgb),
         ):
             confidence_rows.extend(calculate_confidence_rows(
                 y,
@@ -320,6 +381,7 @@ def run_walk_forward(
             ("BLEND_RESEARCH", p_blend),
             ("HISTORICAL_XG", p_historical),
             ("POISSON_CAL", p_poisson_cal),
+            ("HIST_GB", p_hgb),
         ):
             for threshold in thresholds:
                 policy_rows.extend(calculate_policy_rows(
@@ -341,10 +403,12 @@ def run_walk_forward(
         oof["market"].extend(p_market[valid_indices].tolist())
         oof["poisson"].extend(p_poisson[valid_indices].tolist())
         oof["poisson_cal"].extend(p_poisson_cal[valid_indices].tolist())
+        oof["hgb"].extend(p_hgb[valid_indices].tolist())
         oof_all["y"].extend(y.tolist())
         oof_all["historical_xg"].extend(p_historical.tolist())
         oof_all["poisson"].extend(p_poisson.tolist())
         oof_all["poisson_cal"].extend(p_poisson_cal.tolist())
+        oof_all["hgb"].extend(p_hgb.tolist())
 
         print(
             f"Fold {fold_number:02d}: train={len(train)} "
@@ -360,6 +424,7 @@ def run_walk_forward(
         _score_row(y_all, np.asarray(oof["market"]), all_mask, "MARKET", 0),
         _score_row(y_all, np.asarray(oof["poisson"]), all_mask, "POISSON", 0),
         _score_row(y_all, np.asarray(oof["poisson_cal"]), all_mask, "POISSON_CAL", 0),
+        _score_row(y_all, np.asarray(oof["hgb"]), all_mask, "HIST_GB", 0),
     ])
 
     y_all_matches = np.asarray(oof_all["y"], dtype=int)
@@ -368,6 +433,7 @@ def run_walk_forward(
         _score_row(y_all_matches, np.asarray(oof_all["historical_xg"]), all_match_mask, "HISTORICAL_XG", 0, "ALL_MATCHES"),
         _score_row(y_all_matches, np.asarray(oof_all["poisson"]), all_match_mask, "POISSON", 0, "ALL_MATCHES"),
         _score_row(y_all_matches, np.asarray(oof_all["poisson_cal"]), all_match_mask, "POISSON_CAL", 0, "ALL_MATCHES"),
+        _score_row(y_all_matches, np.asarray(oof_all["hgb"]), all_match_mask, "HIST_GB", 0, "ALL_MATCHES"),
     ])
 
     metrics = pd.DataFrame(metric_rows)
@@ -379,6 +445,7 @@ def run_walk_forward(
         ("MARKET", np.asarray(oof["market"], dtype=float)),
         ("POISSON", np.asarray(oof["poisson"], dtype=float)),
         ("POISSON_CAL", np.asarray(oof["poisson_cal"], dtype=float)),
+        ("HIST_GB", np.asarray(oof["hgb"], dtype=float)),
     ):
         confidence_rows.extend(calculate_confidence_rows(
             y_all,
@@ -391,6 +458,7 @@ def run_walk_forward(
         ("HISTORICAL_XG", np.asarray(oof_all["historical_xg"], dtype=float)),
         ("POISSON", np.asarray(oof_all["poisson"], dtype=float)),
         ("POISSON_CAL", np.asarray(oof_all["poisson_cal"], dtype=float)),
+        ("HIST_GB", np.asarray(oof_all["hgb"], dtype=float)),
     ):
         confidence_rows.extend(calculate_confidence_rows(
             y_all_matches,
