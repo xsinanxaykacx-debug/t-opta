@@ -667,6 +667,37 @@ class HistoricalXGModel(BlendModel):
         )
 
 
+class PoissonOnlyModel:
+    """Prediction-time model based only on leakage-safe historical xG Poisson rates."""
+
+    @staticmethod
+    def _y(df):
+        return BlendModel._y(df)
+
+    def fit(self, df):
+        # No outcome-fitted coefficients: all signal is from prior-match xG rates.
+        return self
+
+    def calibrate(self, df):
+        # Raw Poisson probabilities outperformed the fitted calibrators in
+        # expanding-window development folds; do not recalibrate on this data.
+        return self
+
+    @staticmethod
+    def predict_proba(df):
+        if "p_poisson" not in df.columns:
+            raise ValueError("Missing leakage-safe p_poisson feature.")
+        return np.clip(
+            df["p_poisson"].to_numpy(dtype=float),
+            1e-6,
+            1.0 - 1e-6,
+        )
+
+    @staticmethod
+    def raw_predict(df):
+        return PoissonOnlyModel.predict_proba(df)
+
+
 # ============================================================
 # 6. KALİBRASYON METRİĞİ
 # ============================================================
@@ -1187,7 +1218,7 @@ def main(path, skip_final_test=False):
         "\nModel eğitiliyor..."
     )
 
-    model = HistoricalXGModel()
+    model = PoissonOnlyModel()
 
     model.fit(train)
 
