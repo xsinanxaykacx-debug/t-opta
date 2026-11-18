@@ -704,8 +704,8 @@ def save_diagnostics(df, model, label, output_dir, threshold=None):
     report.to_csv(output_dir / f"{label.lower().replace(' ', '_')}_reliability.csv", index=False)
     if not report.empty:
         weights = report["count"].to_numpy(dtype=float)
-        model_ece = float(np.average(np.abs(report["model_bias"]), weights=weights))
-        market_ece = float(np.average(np.abs(report["market_bias"]), weights=weights))
+        model_ece = expected_calibration_error(y[market_valid], p_model[market_valid])
+        market_ece = expected_calibration_error(y[market_valid], p_market[market_valid])
         pd.DataFrame([{
             "n": int(market_valid.sum()),
             "model_ece": model_ece,
