@@ -16,6 +16,7 @@ Kullanım:
 
 import sys
 import warnings
+from pathlib import Path
 import numpy as np
 import pandas as pd
 
@@ -701,6 +702,15 @@ def save_diagnostics(df, model, label, output_dir, threshold=None):
 
     report = reliability_report(y[market_valid], p_model[market_valid], p_market[market_valid])
     report.to_csv(output_dir / f"{label.lower().replace(' ', '_')}_reliability.csv", index=False)
+    if not report.empty:
+        weights = report["count"].to_numpy(dtype=float)
+        model_ece = float(np.average(np.abs(report["model_bias"]), weights=weights))
+        market_ece = float(np.average(np.abs(report["market_bias"]), weights=weights))
+        pd.DataFrame([{
+            "n": int(market_valid.sum()),
+            "model_ece": model_ece,
+            "market_ece": market_ece,
+        }]).to_csv(output_dir / f"{label.lower().replace(' ', '_')}_calibration_summary.csv", index=False)
 
     edge_over = p_model[market_valid] - p_market[market_valid]
     edge_under = -edge_over
@@ -719,6 +729,7 @@ def save_diagnostics(df, model, label, output_dir, threshold=None):
     predictions["edge_under"] = edge_under
     predictions["odds_over"] = over_odds[market_valid]
     predictions["odds_under"] = under_odds[market_valid]
+    predictions["market_margin"] = (1.0 / over_odds[market_valid]) + (1.0 / under_odds[market_valid]) - 1.0
     predictions["selected_side"] = selected
     predictions.to_csv(output_dir / f"{label.lower().replace(' ', '_')}_predictions.csv", index=False)
 
@@ -1257,6 +1268,7 @@ def main(path):
         test,
         model
     )
+    save_diagnostics(test, model, "final_test", output_dir, chosen_threshold)
 
     if chosen_threshold is not None:
 
@@ -1267,7 +1279,6 @@ def main(path):
             thresholds=(chosen_threshold,)
         )
         final_results.to_csv(output_dir / "edge_report_final_test.csv", index=False)
-        save_diagnostics(test, model, "final_test", output_dir, chosen_threshold)
 
     else:
 
