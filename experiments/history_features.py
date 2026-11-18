@@ -71,9 +71,18 @@ def add_xg18_historical_features(
         source_values = out[column].astype(str).str.strip().str.casefold().reset_index(drop=True)
         history_values = matched_history[column].astype(str).str.strip().str.casefold().reset_index(drop=True)
         if not source_values.equals(history_values):
-            mismatch_count = int((source_values != history_values).sum())
+            mismatch_mask = source_values != history_values
+            mismatch_count = int(mismatch_mask.sum())
+            examples = list(
+                zip(
+                    out.loc[mismatch_mask, "MatchID"].astype(str).tolist()[:5],
+                    source_values.loc[mismatch_mask].tolist()[:5],
+                    history_values.loc[mismatch_mask].tolist()[:5],
+                )
+            )
             raise ValueError(
-                f"xgo/xg18 {column} mismatch for {mismatch_count} MatchID rows."
+                f"xgo/xg18 {column} mismatch for {mismatch_count} MatchID rows; "
+                f"examples (MatchID, xgo, xg18): {examples}"
             )
 
     for column in ("FTHG", "FTAG", "Home_xG", "Away_xG"):
