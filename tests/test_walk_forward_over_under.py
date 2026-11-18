@@ -58,7 +58,7 @@ def test_confidence_report_measures_selective_accuracy_and_coverage():
     from scripts.walk_forward_over_under import calculate_confidence_rows
 
     y = np.array([1, 0, 1, 0], dtype=int)
-    probabilities = np.array([0.90, 0.80, 0.55, 0.45])
+    probabilities = np.array([0.90, 0.10, 0.55, 0.45])
 
     rows = calculate_confidence_rows(
         y=y,
@@ -73,7 +73,7 @@ def test_confidence_report_measures_selective_accuracy_and_coverage():
     assert np.isclose(by_cutoff[0.60]["coverage"], 0.5)
     assert np.isclose(by_cutoff[0.60]["accuracy"], 1.0)
     assert by_cutoff[0.80]["matches"] == 2
-    assert np.isclose(by_cutoff[0.80]["mean_confidence"], 0.85)
+    assert np.isclose(by_cutoff[0.80]["mean_confidence"], 0.90)
 
 
 def test_walk_forward_fold_builder_rejects_insufficient_history():
