@@ -135,3 +135,19 @@ def test_away_side_recent_xg_windows_retain_fifteen_prior_matches():
     assert np.isclose(target["away_recent_for"], np.mean([12, 13, 14, 15, 16]))
     assert np.isclose(target["away_recent_for_10"], np.mean(range(7, 17)))
     assert np.isclose(target["away_recent_for_15"], np.mean(range(2, 17)))
+
+
+def test_recent_expected_goals_adjust_attack_by_opponent_defence():
+    from BOT import _recent_expected_goals
+
+    lambda_home, lambda_away = _recent_expected_goals(
+        home_for=2.0,
+        home_against=1.0,
+        away_for=1.0,
+        away_against=2.0,
+        league_average=1.25,
+        home_advantage=1.10,
+    )
+
+    assert np.isclose(lambda_home, (2.0 / 1.25) * (2.0 / 1.25) * 1.25 * 1.10)
+    assert np.isclose(lambda_away, (1.0 / 1.25) * (1.0 / 1.25) * 1.25)
