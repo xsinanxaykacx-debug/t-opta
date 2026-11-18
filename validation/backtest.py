@@ -12,9 +12,8 @@ from validation.metrics import EvaluationMetrics
 class HistoricalBacktester:
     """Evaluate an adapter on disjoint, ordered train/calibration/test periods.
 
-    The feature engine builds each row by MatchID from its historical source;
-    its calendar-day exclusion policy prevents same-day fixtures leaking into
-    one another. The adapter owns train-fitted preprocessing and model fitting.
+    Feature rows are rebuilt by MatchID from the canonical historical engine.
+    That engine excludes every fixture on the target calendar day.
     """
 
     def __init__(
@@ -36,16 +35,31 @@ class HistoricalBacktester:
         if missing:
             raise ValueError(f"{name} is missing required columns: {sorted(missing)}")
         data = frame.copy()
+        data["MatchID"] = data["MatchID"].astype(str)
         data["Date"] = pd.to_datetime(data["Date"], errors="coerce", utc=True)
         if data["Date"].isna().any():
             raise ValueError(f"{name} contains invalid or missing dates.")
-        if data["MatchID"].astype(str).duplicated().any():
+        if data["MatchID"].duplicated().any():
             raise ValueError(f"{name} contains duplicate MatchID values.")
+        for column in ("FTHG", "FTAG"):
+            data[column] = pd.to_numeric(data[column], errors="coerce")
         if data[["FTHG", "FTAG"]].isna().any().any():
-            raise ValueError(f"{name} contains incomplete full-time scores.")
+            raise ValueError(f"{name} contains incomplete or non-numeric full-time scores.")
         if (data[["FTHG", "FTAG"]] < 0).any().any():
             raise ValueError(f"{name} contains negative full-time scores.")
         return data.sort_values(["Date", "MatchID"], kind="stable").reset_index(drop=True)
+
+    def _validate_source_alignment(self, frame: pd.DataFrame, name: str) -> None:
+        source = self.feature_engine.history._match_index
+        for row in frame.itertuples(index=False):
+            match_id = str(row.MatchID)
+            if match_id not in source.index:
+                raise ValueError(f"{name} MatchID {match_id} is absent from canonical history.")
+            canonical = source.loc[match_id]
+            if pd.Timestamp(canonical["Date"]) != pd.Timestamp(row.Date):
+                raise ValueError(f"{name} Date mismatch for MatchID {match_id}.")
+            if float(canonical["FTHG"]) != float(row.FTHG) or float(canonical["FTAG"]) != float(row.FTAG):
+                raise ValueError(f"{name} score mismatch for MatchID {match_id}.")
 
     @staticmethod
     def _labels(frame: pd.DataFrame) -> np.ndarray:
@@ -54,7 +68,7 @@ class HistoricalBacktester:
         return np.where(home > away, 0, np.where(home == away, 1, 2)).astype(int)
 
     def _features(self, frame: pd.DataFrame) -> pd.DataFrame:
-        return self.feature_engine.build_dataset(frame["MatchID"].astype(str).tolist())
+        return self.feature_engine.build_dataset(frame["MatchID"].tolist())
 
     def _decisions(self, probabilities: np.ndarray, features: pd.DataFrame) -> list[str]:
         decisions = []
@@ -91,6 +105,11 @@ class HistoricalBacktester:
         if calib_df is not None and not calib_df.empty:
             calibration = self._prepare_partition(calib_df, "calib_df")
 
+        self._validate_source_alignment(train, "train_df")
+        self._validate_source_alignment(test, "test_df")
+        if calibration is not None:
+            self._validate_source_alignment(calibration, "calib_df")
+
         if train["Date"].max().normalize() >= test["Date"].min().normalize():
             raise ValueError("Train and test must be separated by calendar day.")
         if calibration is not None:
@@ -103,7 +122,7 @@ class HistoricalBacktester:
         if calibration is not None:
             partitions.append(calibration)
         partitions.append(test)
-        all_ids = pd.concat([part["MatchID"].astype(str) for part in partitions], ignore_index=True)
+        all_ids = pd.concat([part["MatchID"] for part in partitions], ignore_index=True)
         if all_ids.duplicated().any():
             raise ValueError("MatchID overlap detected between backtest partitions.")
 
@@ -119,8 +138,9 @@ class HistoricalBacktester:
         x_test, y_test = self._features(test), self._labels(test)
         probabilities = np.asarray(self.model_adapter.predict_proba(x_test), dtype=float)
         if probabilities.shape != (len(test), 3):
-            raise ValueError("predict_proba must return an (n_test, 3) matrix in [home, draw, away] order.")
-        # Reuse the metrics validator before applying any decision policy.
+            raise ValueError(
+                "predict_proba must return an (n_test, 3) matrix in [home, draw, away] order."
+            )
         EvaluationMetrics._validate(y_test, probabilities)
         decisions = self._decisions(probabilities, x_test)
         report = EvaluationMetrics.evaluate_predictions(y_test, probabilities, decisions)
