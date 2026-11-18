@@ -830,6 +830,61 @@ def evaluate(name, df, model):
 # 8. VALUE BET ANALİZİ
 # ============================================================
 
+def confidence_policy_analysis(df, model, label, cutoff=0.75):
+    """Evaluate a fixed, odds-independent confidence gate; no threshold tuning."""
+    y = model._y(df)
+    probabilities = model.predict_proba(df)
+    confidence = np.maximum(probabilities, 1.0 - probabilities)
+    selected = confidence >= float(cutoff)
+
+    count = int(selected.sum())
+    total = int(len(df))
+    predicted = (probabilities >= 0.5).astype(int)
+    correct = predicted == y
+
+    print("\\n" + "=" * 78)
+    print(f"CONFIDENCE POLICY — {label} — FIXED CUTOFF: {cutoff:.2f}")
+    print("=" * 78)
+    print(f"Selected picks : {count} / {total}")
+    print(f"Coverage       : {count / total:.1%}" if total else "Coverage       : 0.0%")
+
+    if count == 0:
+        print("Accuracy       : NO PICK")
+        return {
+            "label": label,
+            "cutoff": float(cutoff),
+            "matches": 0,
+            "accuracy": np.nan,
+            "coverage": 0.0,
+        }
+
+    accuracy = float(correct[selected].mean())
+    over_mask = selected & (predicted == 1)
+    under_mask = selected & (predicted == 0)
+
+    print(f"Correct        : {int(correct[selected].sum())} / {count}")
+    print(f"Accuracy       : {accuracy:.2%}")
+    print(
+        f"OVER picks     : {int(over_mask.sum())} "
+        f"| hit rate: {float(correct[over_mask].mean()):.2%}"
+        if over_mask.any() else "OVER picks     : 0"
+    )
+    print(
+        f"UNDER picks    : {int(under_mask.sum())} "
+        f"| hit rate: {float(correct[under_mask].mean()):.2%}"
+        if under_mask.any() else "UNDER picks    : 0"
+    )
+
+    return {
+        "label": label,
+        "cutoff": float(cutoff),
+        "matches": count,
+        "correct": int(correct[selected].sum()),
+        "accuracy": accuracy,
+        "coverage": float(count / total) if total else 0.0,
+    }
+
+
 def value_bet_analysis(
     df,
     model,
@@ -1246,6 +1301,13 @@ def main(path, skip_final_test=False):
     # Bağımsız eşik seçimi
     # --------------------------------------------------------
 
+    confidence_policy_analysis(
+        policy_select,
+        model,
+        "POLICY SELECT",
+        cutoff=0.75,
+    )
+
     selection_results = value_bet_analysis(
         policy_select,
         model,
@@ -1281,6 +1343,13 @@ def main(path, skip_final_test=False):
         "POLICY CHECK — BAĞIMSIZ DOĞRULAMA",
         policy_check,
         model
+    )
+
+    confidence_policy_analysis(
+        policy_check,
+        model,
+        "POLICY CHECK",
+        cutoff=0.75,
     )
 
     if chosen_threshold is not None:
