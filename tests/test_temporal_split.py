@@ -16,7 +16,7 @@ def test_input_dataframe_is_not_mutated():
     pd.testing.assert_frame_equal(frame, original)
 
 def test_invalid_date_is_rejected_not_dropped():
-    frame = sample_frame(); frame.loc[2, "match_date"] = "bad-date"
+    frame = sample_frame().astype({"match_date": "object"}); frame.loc[2, "match_date"] = "bad-date"
     with pytest.raises(ValueError, match="invalid/missing dates"):
         TemporalSplitter("2024-07-01").split_data(frame)
 
