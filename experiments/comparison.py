@@ -66,27 +66,40 @@ def load_dataset(path: Path) -> pd.DataFrame:
     missing = [column for column in required if column not in frame.columns]
     if missing:
         raise ValueError(f"Missing required dataset columns: {missing}")
+    if len(frame) != EXPECTED_TOTAL_ROWS:
+        raise ValueError(
+            f"Raw dataset has {len(frame)} rows; expected {EXPECTED_TOTAL_ROWS}."
+        )
 
+    # Validate only pre-match identity/history inputs here. Target score
+    # values are parsed and checked partition-by-partition when permitted.
     frame = frame.copy()
+    frame["MatchID"] = frame["MatchID"].astype("string").str.strip()
     frame["Date"] = pd.to_datetime(frame["Date"], errors="coerce", utc=True)
-    for column in ("Home_xG", "Away_xG", "FTHG", "FTAG"):
+    for column in ("Home_xG", "Away_xG"):
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
 
-    frame = frame.dropna(subset=required).copy()
+    feature_required = [
+        "MatchID", "Date", "League", "HomeTeam", "AwayTeam", "Home_xG", "Away_xG"
+    ]
+    invalid = frame[feature_required].isna().any()
+    if invalid.any():
+        raise ValueError(
+            "Missing pre-match identity/history values: "
+            f"{invalid[invalid].index.tolist()}"
+        )
+    if not np.isfinite(frame[["Home_xG", "Away_xG"]].to_numpy(dtype=float)).all():
+        raise ValueError("Historical xG columns contain non-finite values.")
+
     frame = frame.sort_values(
         ["Date", "League", "HomeTeam", "AwayTeam"],
         kind="mergesort",
     ).reset_index(drop=True)
 
-    if len(frame) != EXPECTED_TOTAL_ROWS:
-        raise ValueError(
-            f"Clean dataset has {len(frame)} rows; expected {EXPECTED_TOTAL_ROWS}."
-        )
     if frame.duplicated(["Date", "League", "HomeTeam", "AwayTeam"]).any():
         raise ValueError("Duplicate fixture key detected.")
     validate_chronological_order(frame["Date"].tolist(), column_name="Date")
 
-    # Validate the only raw odds columns consumed by BOT.market_data.
     validate_feature_columns(
         [
             "odds_Avg>2.5",
@@ -95,10 +108,8 @@ def load_dataset(path: Path) -> pd.DataFrame:
             "odds_B365<2.5",
         ]
     )
-    # Internal model inputs are explicitly named as pre-match / historical.
     validate_feature_columns(OddsAwareModel.feature_names)
     return frame
-
 
 def make_partitions(frame: pd.DataFrame) -> dict[str, pd.DataFrame]:
     cuts = (8500, 9400, 9700, 10000, EXPECTED_TOTAL_ROWS)
@@ -156,11 +167,11 @@ def purge_same_calendar_day_boundaries(
 
 
 def labels(frame: pd.DataFrame) -> np.ndarray:
-    return (
-        frame["FTHG"].to_numpy(dtype=float)
-        + frame["FTAG"].to_numpy(dtype=float)
-        > 2.5
-    ).astype(int)
+    home_goals = pd.to_numeric(frame["FTHG"], errors="coerce").to_numpy(dtype=float)
+    away_goals = pd.to_numeric(frame["FTAG"], errors="coerce").to_numpy(dtype=float)
+    if not np.isfinite(home_goals).all() or not np.isfinite(away_goals).all():
+        raise ValueError("The currently permitted partition has missing/invalid target scores.")
+    return ((home_goals + away_goals) > 2.5).astype(int)
 
 
 def market_components(frame: pd.DataFrame) -> dict[str, np.ndarray]:
@@ -401,7 +412,11 @@ def build_odds_buckets(
 def run_experiment(data_path: Path, output_dir: Path) -> dict[str, Any]:
     frame = load_dataset(data_path)
     frame["_source_row"] = np.arange(len(frame), dtype=int)
-    featured, history_metadata = add_xg18_historical_features(frame, Path("xg18.csv"))
+    featured, history_metadata = add_xg18_historical_features(
+        frame,
+        Path("xg18.csv"),
+        target_validation_limit=10_000,
+    )
     raw_partitions = make_partitions(featured)
     effective, purged = purge_same_calendar_day_boundaries(raw_partitions)
 
