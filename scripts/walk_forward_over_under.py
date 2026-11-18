@@ -480,6 +480,7 @@ def run_walk_forward(
             ("HISTORICAL_XG", p_historical),
             ("POISSON", p_poisson),
             ("POISSON_CAL", p_poisson_cal),
+            ("POISSON_PLATT", p_poisson_platt),
             ("HIST_GB", p_hgb),
         ):
             confidence_rows.extend(calculate_confidence_rows(
@@ -494,6 +495,7 @@ def run_walk_forward(
             ("BLEND_RESEARCH", p_blend),
             ("HISTORICAL_XG", p_historical),
             ("POISSON_CAL", p_poisson_cal),
+            ("POISSON_PLATT", p_poisson_platt),
             ("HIST_GB", p_hgb),
         ):
             for threshold in thresholds:
