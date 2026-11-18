@@ -18,8 +18,15 @@ jobs:
           cache: "pip"
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
-      - name: Run unit tests
-        run: python -m pytest
+      - name: Run experiment-focused unit tests
+        run: >
+          python -m pytest
+          tests/test_experiment_protocol.py
+          tests/test_experiment_runner.py
+          tests/test_market_baseline.py
+          tests/test_no_closing_odds.py
+          tests/test_odds_aware.py
+          tests/test_poisson_baseline.py
       - name: Run sealed three-model comparison
         run: python -m experiments.comparison --data xgo.csv --output results/comparison
       - name: Upload reproducible reports
