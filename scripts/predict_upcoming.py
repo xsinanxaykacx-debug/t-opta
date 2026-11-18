@@ -75,11 +75,12 @@ def build_prediction_table(
     result["confidence_cutoff"] = float(confidence_cutoff)
     result["top_n_limit"] = int(top_n)
 
+    result["_pick_order"] = np.where(result["status"] == "PICK", 0, 1)
     return result.sort_values(
-        ["status", "confidence_rank"],
+        ["_pick_order", "confidence_rank"],
         ascending=[True, True],
         kind="mergesort",
-    ).reset_index(drop=True)
+    ).drop(columns=["_pick_order"]).reset_index(drop=True)
 
 
 def prepare_upcoming_features(
