@@ -541,6 +541,8 @@ def aggregate_prediction_diagnostics(predictions: pd.DataFrame) -> pd.DataFrame:
         ]])
 
     detail = pd.concat(frames, ignore_index=True)
+    detail["confidence_sum"] = detail["mean_confidence"] * detail["matches"]
+    detail["total_lambda_sum"] = detail["mean_total_lambda"] * detail["matches"]
     pooled = detail.loc[detail["fold"] != 0].groupby(
         ["model", "dimension", "bucket"],
         dropna=False,
@@ -548,13 +550,17 @@ def aggregate_prediction_diagnostics(predictions: pd.DataFrame) -> pd.DataFrame:
     ).agg(
         matches=("matches", "sum"),
         correct=("correct", "sum"),
-        mean_confidence=("mean_confidence", "mean"),
-        mean_total_lambda=("mean_total_lambda", "mean"),
+        confidence_sum=("confidence_sum", "sum"),
+        total_lambda_sum=("total_lambda_sum", "sum"),
     ).reset_index()
+    pooled["mean_confidence"] = pooled["confidence_sum"] / pooled["matches"]
+    pooled["mean_total_lambda"] = pooled["total_lambda_sum"] / pooled["matches"]
     pooled["fold"] = 0
     pooled["accuracy"] = pooled["correct"] / pooled["matches"]
     pooled["error_rate"] = 1.0 - pooled["accuracy"]
-    return pd.concat([detail, pooled[detail.columns]], ignore_index=True)
+    pooled = pooled[detail.columns]
+    detail = detail.drop(columns=["confidence_sum", "total_lambda_sum"])
+    return pd.concat([detail, pooled], ignore_index=True)
 
 def load_development_data(path: str | Path) -> pd.DataFrame:
     """Load and clean history, then cap it before feature generation."""
