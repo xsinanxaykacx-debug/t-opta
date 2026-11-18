@@ -25,8 +25,15 @@ class FeatureEngine:
         values = pd.to_numeric(series, errors="coerce").dropna()
         return float(values.ewm(span=span, adjust=False).mean().iloc[-1]) if len(values) else math.nan
 
-    def _team_features(self, team: str, before_date, prefix: str, venue: str) -> dict:
-        history = self.history.get_team_history(team, before_date)
+    def _team_features(
+        self,
+        team: str,
+        before_date,
+        prefix: str,
+        venue: str,
+        league: str,
+    ) -> dict:
+        history = self.history.get_team_history(team, before_date, league=league)
         if venue in {"home", "away"}:
             history = history.loc[history["TeamSide"].eq(venue)]
         history = history.sort_values("Date", ascending=False, kind="stable")
@@ -73,9 +80,10 @@ class FeatureEngine:
             "Season": str(match["Season"]),
             "match_date": cutoff,
         }
-        features.update(self._team_features(home, cutoff, "home", "home"))
-        features.update(self._team_features(away, cutoff, "away", "away"))
-        h2h = self.history.get_match_history(home, away, cutoff)
+        league = str(match["League"])
+        features.update(self._team_features(home, cutoff, "home", "home", league))
+        features.update(self._team_features(away, cutoff, "away", "away", league))
+        h2h = self.history.get_match_history(home, away, cutoff, league=league)
         features["h2h_matches_available"] = int(len(h2h))
         features["h2h_home_goals_avg"] = self._mean(h2h["TeamGoals"])
         features["h2h_away_goals_avg"] = self._mean(h2h["OpponentGoals"])
