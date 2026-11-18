@@ -10,21 +10,24 @@ permissions:
 
 jobs:
   train-and-backtest:
-    # Ignore stale successful test runs. Only evaluate the exact current main commit.
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_sha == github.sha }}
+    # Run only after successful tests on main; verify freshness explicitly after checkout.
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
-      - name: Verify checked-out commit
+      - name: Verify checked-out commit and current main SHA
         env:
           EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           ACTUAL_SHA="$(git rev-parse HEAD)"
-          echo "Expected commit: ${EXPECTED_SHA}"
-          echo "Actual SHA:      ${ACTUAL_SHA}"
+          REMOTE_MAIN_SHA="$(git ls-remote origin refs/heads/main | cut -f1)"
+          echo "Expected upstream test SHA: ${EXPECTED_SHA}"
+          echo "Checked-out SHA:             ${ACTUAL_SHA}"
+          echo "Current origin/main SHA:     ${REMOTE_MAIN_SHA}"
           test "${ACTUAL_SHA}" = "${EXPECTED_SHA}"
+          test "${REMOTE_MAIN_SHA}" = "${EXPECTED_SHA}"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
