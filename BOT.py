@@ -19,6 +19,8 @@ import warnings
 import numpy as np
 import pandas as pd
 
+from diagnostics import run_diagnostics
+
 from scipy.stats import poisson
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
@@ -1130,6 +1132,14 @@ def main(path):
             thresholds=(chosen_threshold,)
         )
 
+        run_diagnostics(
+            df=policy_check,
+            model=model,
+            label="POLICY_CHECK",
+            threshold=chosen_threshold,
+            market_data_fn=market_data,
+        )
+
     # --------------------------------------------------------
     # Final test
     # --------------------------------------------------------
@@ -1155,6 +1165,14 @@ def main(path):
             model,
             "FINAL TEST",
             thresholds=(chosen_threshold,)
+        )
+
+        run_diagnostics(
+            df=test,
+            model=model,
+            label="FINAL_TEST",
+            threshold=chosen_threshold,
+            market_data_fn=market_data,
         )
 
     else:
