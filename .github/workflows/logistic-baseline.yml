@@ -23,7 +23,7 @@ jobs:
         run: |
           ACTUAL_SHA="$(git rev-parse HEAD)"
           echo "Expected commit: ${EXPECTED_SHA}"
-          echo "Actual commit:   ${ACTUAL_SHA}"
+          echo "Actual SHA:      ${ACTUAL_SHA}"
           test "${ACTUAL_SHA}" = "${EXPECTED_SHA}"
       - uses: actions/setup-python@v5
         with:
@@ -32,10 +32,14 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Train and run chronological backtest
         run: python scripts/run_logistic_baseline.py
-      - name: Upload baseline report
+      - name: Run draw probability and threshold diagnostics
+        run: python scripts/analyze_draw_diagnostics.py
+      - name: Upload baseline and draw diagnostic reports
         uses: actions/upload-artifact@v4
         with:
-          name: logistic-baseline-report
-          path: reports/logistic_baseline_report.json
+          name: logistic-baseline-and-draw-diagnostics
+          path: |
+            reports/logistic_baseline_report.json
+            reports/draw_diagnostics_report.json
           if-no-files-found: error
           retention-days: 30
