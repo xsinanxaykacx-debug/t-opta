@@ -16,6 +16,7 @@ from sklearn.isotonic import IsotonicRegression
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score
+from scipy.stats import nbinom, poisson
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -86,6 +87,58 @@ class HistGradientBoostingCandidate:
         if self.calibrator is not None:
             probabilities = self.calibrator.predict(probabilities)
         return np.clip(probabilities, 1e-6, 1.0 - 1e-6)
+
+
+class NegativeBinomialCandidate:
+    """Train-only overdispersed total-goals model using historical xG rates."""
+
+    def __init__(self):
+        self.alpha = 0.0
+
+    @staticmethod
+    def _mu(frame: pd.DataFrame) -> np.ndarray:
+        required = ("lambda_home", "lambda_away")
+        missing = [column for column in required if column not in frame.columns]
+        if missing:
+            raise ValueError("Negative-binomial features missing: " + ", ".join(missing))
+        return np.clip(
+            frame["lambda_home"].to_numpy(dtype=float)
+            + frame["lambda_away"].to_numpy(dtype=float),
+            1e-4,
+            10.0,
+        )
+
+    @staticmethod
+    def _goals(frame: pd.DataFrame) -> np.ndarray:
+        return (
+            frame["FTHG"].to_numpy(dtype=float)
+            + frame["FTAG"].to_numpy(dtype=float)
+        )
+
+    def fit(self, train: pd.DataFrame):
+        mu = self._mu(train)
+        goals = self._goals(train)
+        valid = np.isfinite(mu) & np.isfinite(goals)
+        if valid.sum() < 100:
+            raise ValueError("Negative-binomial dispersion needs at least 100 valid training matches.")
+
+        mu = mu[valid]
+        goals = goals[valid]
+        denominator = float(np.square(mu).sum())
+        numerator = float((np.square(goals - mu) - mu).sum())
+        estimate = numerator / denominator if denominator > 0 else 0.0
+        self.alpha = float(np.clip(estimate, 0.0, 2.0))
+        return self
+
+    def predict_proba(self, frame: pd.DataFrame) -> np.ndarray:
+        mu = self._mu(frame)
+        if self.alpha <= 1e-8:
+            probabilities = poisson.sf(2, mu)
+        else:
+            shape = 1.0 / self.alpha
+            probability = shape / (shape + mu)
+            probabilities = nbinom.sf(2, shape, probability)
+        return np.clip(np.asarray(probabilities, dtype=float), 1e-6, 1.0 - 1e-6)
 
 
 def build_fold_slices(
@@ -395,10 +448,10 @@ def run_walk_forward(
     confidence_rows = []
     oof = {
         "y": [], "blend": [], "historical_xg": [], "market": [],
-        "poisson": [], "poisson_cal": [], "poisson_platt": [], "goal_poisson": [], "xg_goal_blend": [], "hgb": [],
+        "poisson": [], "poisson_cal": [], "poisson_platt": [], "goal_poisson": [], "xg_goal_blend": [], "negative_binomial": [], "hgb": [],
     }
     oof_all = {
-        "y": [], "historical_xg": [], "poisson": [], "poisson_cal": [], "poisson_platt": [], "goal_poisson": [], "xg_goal_blend": [], "hgb": [],
+        "y": [], "historical_xg": [], "poisson": [], "poisson_cal": [], "poisson_platt": [], "goal_poisson": [], "xg_goal_blend": [], "negative_binomial": [], "hgb": [],
     }
 
     for fold_number, (train_slice, calibration_slice, validation_slice) in enumerate(windows, 1):
@@ -418,6 +471,8 @@ def run_walk_forward(
         hgb_model.fit(train)
         hgb_model.calibrate(calibration)
 
+        negative_binomial_model = NegativeBinomialCandidate().fit(train)
+
         y = historical_model._y(validation)
         y_calibration = historical_model._y(calibration)
         p_blend = blend_model.predict_proba(validation)
@@ -426,6 +481,7 @@ def run_walk_forward(
         p_poisson = validation["p_poisson"].to_numpy(dtype=float)
         p_goal_poisson = validation["p_poisson_goals"].to_numpy(dtype=float)
         p_xg_goal_blend = np.clip(0.5 * p_poisson + 0.5 * p_goal_poisson, 1e-6, 1.0 - 1e-6)
+        p_negative_binomial = negative_binomial_model.predict_proba(validation)
         p_market, over_odds, under_odds, market_valid = market_data(validation)
 
         # Calibrated Poisson-only candidate: no bookmaker odds in its features.
@@ -456,6 +512,7 @@ def run_walk_forward(
             _score_row(y, p_poisson_platt, market_valid, "POISSON_PLATT", fold_number),
             _score_row(y, p_goal_poisson, market_valid, "GOAL_POISSON", fold_number),
             _score_row(y, p_xg_goal_blend, market_valid, "XG_GOAL_BLEND", fold_number),
+            _score_row(y, p_negative_binomial, market_valid, "NEGATIVE_BINOMIAL", fold_number),
             _score_row(y, p_hgb, market_valid, "HIST_GB", fold_number),
             _score_row(y, p_historical, np.ones(len(y), dtype=bool), "HISTORICAL_XG", fold_number, "ALL_MATCHES"),
             _score_row(y, p_poisson, np.ones(len(y), dtype=bool), "POISSON", fold_number, "ALL_MATCHES"),
@@ -463,6 +520,7 @@ def run_walk_forward(
             _score_row(y, p_poisson_platt, np.ones(len(y), dtype=bool), "POISSON_PLATT", fold_number, "ALL_MATCHES"),
             _score_row(y, p_goal_poisson, np.ones(len(y), dtype=bool), "GOAL_POISSON", fold_number, "ALL_MATCHES"),
             _score_row(y, p_xg_goal_blend, np.ones(len(y), dtype=bool), "XG_GOAL_BLEND", fold_number, "ALL_MATCHES"),
+            _score_row(y, p_negative_binomial, np.ones(len(y), dtype=bool), "NEGATIVE_BINOMIAL", fold_number, "ALL_MATCHES"),
             _score_row(y, p_hgb, np.ones(len(y), dtype=bool), "HIST_GB", fold_number, "ALL_MATCHES"),
         ])
 
@@ -475,6 +533,7 @@ def run_walk_forward(
             ("POISSON_PLATT", p_poisson_platt),
             ("GOAL_POISSON", p_goal_poisson),
             ("XG_GOAL_BLEND", p_xg_goal_blend),
+            ("NEGATIVE_BINOMIAL", p_negative_binomial),
             ("HIST_GB", p_hgb),
         ):
             confidence_rows.extend(calculate_confidence_rows(
@@ -491,6 +550,7 @@ def run_walk_forward(
             ("POISSON_PLATT", p_poisson_platt),
             ("GOAL_POISSON", p_goal_poisson),
             ("XG_GOAL_BLEND", p_xg_goal_blend),
+            ("NEGATIVE_BINOMIAL", p_negative_binomial),
             ("HIST_GB", p_hgb),
         ):
             confidence_rows.extend(calculate_confidence_rows(
@@ -508,6 +568,7 @@ def run_walk_forward(
             ("POISSON_PLATT", p_poisson_platt),
             ("GOAL_POISSON", p_goal_poisson),
             ("XG_GOAL_BLEND", p_xg_goal_blend),
+            ("NEGATIVE_BINOMIAL", p_negative_binomial),
             ("HIST_GB", p_hgb),
         ):
             for threshold in thresholds:
@@ -533,6 +594,7 @@ def run_walk_forward(
         oof["poisson_platt"].extend(p_poisson_platt[valid_indices].tolist())
         oof["goal_poisson"].extend(p_goal_poisson[valid_indices].tolist())
         oof["xg_goal_blend"].extend(p_xg_goal_blend[valid_indices].tolist())
+        oof["negative_binomial"].extend(p_negative_binomial[valid_indices].tolist())
         oof["hgb"].extend(p_hgb[valid_indices].tolist())
         oof_all["y"].extend(y.tolist())
         oof_all["historical_xg"].extend(p_historical.tolist())
@@ -541,6 +603,7 @@ def run_walk_forward(
         oof_all["poisson_platt"].extend(p_poisson_platt.tolist())
         oof_all["goal_poisson"].extend(p_goal_poisson.tolist())
         oof_all["xg_goal_blend"].extend(p_xg_goal_blend.tolist())
+        oof_all["negative_binomial"].extend(p_negative_binomial.tolist())
         oof_all["hgb"].extend(p_hgb.tolist())
 
         print(
@@ -560,6 +623,7 @@ def run_walk_forward(
         _score_row(y_all, np.asarray(oof["poisson_platt"]), all_mask, "POISSON_PLATT", 0),
         _score_row(y_all, np.asarray(oof["goal_poisson"]), all_mask, "GOAL_POISSON", 0),
         _score_row(y_all, np.asarray(oof["xg_goal_blend"]), all_mask, "XG_GOAL_BLEND", 0),
+        _score_row(y_all, np.asarray(oof["negative_binomial"]), all_mask, "NEGATIVE_BINOMIAL", 0),
         _score_row(y_all, np.asarray(oof["hgb"]), all_mask, "HIST_GB", 0),
     ])
 
@@ -572,6 +636,7 @@ def run_walk_forward(
         _score_row(y_all_matches, np.asarray(oof_all["poisson_platt"]), all_match_mask, "POISSON_PLATT", 0, "ALL_MATCHES"),
         _score_row(y_all_matches, np.asarray(oof_all["goal_poisson"]), all_match_mask, "GOAL_POISSON", 0, "ALL_MATCHES"),
         _score_row(y_all_matches, np.asarray(oof_all["xg_goal_blend"]), all_match_mask, "XG_GOAL_BLEND", 0, "ALL_MATCHES"),
+        _score_row(y_all_matches, np.asarray(oof_all["negative_binomial"]), all_match_mask, "NEGATIVE_BINOMIAL", 0, "ALL_MATCHES"),
         _score_row(y_all_matches, np.asarray(oof_all["hgb"]), all_match_mask, "HIST_GB", 0, "ALL_MATCHES"),
     ])
 
@@ -587,6 +652,7 @@ def run_walk_forward(
         ("POISSON_PLATT", np.asarray(oof["poisson_platt"], dtype=float)),
         ("GOAL_POISSON", np.asarray(oof["goal_poisson"], dtype=float)),
         ("XG_GOAL_BLEND", np.asarray(oof["xg_goal_blend"], dtype=float)),
+        ("NEGATIVE_BINOMIAL", np.asarray(oof["negative_binomial"], dtype=float)),
         ("HIST_GB", np.asarray(oof["hgb"], dtype=float)),
     ):
         confidence_rows.extend(calculate_confidence_rows(
@@ -603,6 +669,7 @@ def run_walk_forward(
         ("POISSON_PLATT", np.asarray(oof_all["poisson_platt"], dtype=float)),
         ("GOAL_POISSON", np.asarray(oof_all["goal_poisson"], dtype=float)),
         ("XG_GOAL_BLEND", np.asarray(oof_all["xg_goal_blend"], dtype=float)),
+        ("NEGATIVE_BINOMIAL", np.asarray(oof_all["negative_binomial"], dtype=float)),
         ("HIST_GB", np.asarray(oof_all["hgb"], dtype=float)),
     ):
         confidence_rows.extend(calculate_confidence_rows(
