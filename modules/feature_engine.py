@@ -25,7 +25,7 @@ class FeatureEngine:
         values = pd.to_numeric(series, errors="coerce").dropna()
         return float(values.ewm(span=span, adjust=False).mean().iloc[-1]) if len(values) else math.nan
 
-    def _team_features(self, history: pd.DataFrame, prefix: str, venue: str) -> dict:
+    def _team_features(self, history: pd.DataFrame, before_date, prefix: str, venue: str) -> dict:
         if history.empty:
             return {
                 f"{prefix}_matches_available": 0,
@@ -47,12 +47,11 @@ class FeatureEngine:
         venue_history = history.loc[history["TeamSide"].eq(venue)].copy()
         latest = venue_history.head(10)
         recent5 = latest.head(5)
-        latest_match_date = history["Date"].max()
+        latest_match_date = history.iloc[0]["Date"]
         rest_days = (
-            (pd.Timestamp(history.index.name) - latest_match_date).days
-            if history.index.name is not None
-            else np.nan
-        )
+            pd.Timestamp(before_date).normalize()
+            - pd.Timestamp(latest_match_date).normalize()
+        ).days
 
         return {
             f"{prefix}_matches_available": int(len(venue_history)),
@@ -90,8 +89,8 @@ class FeatureEngine:
         league = str(match["League"])
         home_history = self.history.get_team_history(home, cutoff, league=league)
         away_history = self.history.get_team_history(away, cutoff, league=league)
-        features.update(self._team_features(home_history, "home", "home"))
-        features.update(self._team_features(away_history, "away", "away"))
+        features.update(self._team_features(home_history, cutoff, "home", "home"))
+        features.update(self._team_features(away_history, cutoff, "away", "away"))
         h2h = home_history.loc[
             home_history["Opponent"].astype(str).str.casefold().eq(away.casefold())
         ].copy()
