@@ -418,6 +418,8 @@ def build_prediction_diagnostic_rows(
         "home_history_count", "away_history_count",
         "home_for_mean", "away_for_mean",
         "home_recent_for", "away_recent_for",
+        "home_recent_for_10", "away_recent_for_10",
+        "home_recent_for_15", "away_recent_for_15",
     )
     missing = [column for column in required if column not in validation.columns]
     if missing:
@@ -439,8 +441,8 @@ def build_prediction_diagnostic_rows(
     recent_delta = (
         frame["home_recent_for"].to_numpy(dtype=float)
         + frame["away_recent_for"].to_numpy(dtype=float)
-        - frame["home_for_mean"].to_numpy(dtype=float)
-        - frame["away_for_mean"].to_numpy(dtype=float)
+        - frame["home_recent_for_15"].to_numpy(dtype=float)
+        - frame["away_recent_for_15"].to_numpy(dtype=float)
     )
     recent_form = np.select(
         [recent_delta <= -0.15, recent_delta >= 0.15],
@@ -496,6 +498,9 @@ def build_prediction_diagnostic_rows(
                 "total_lambda_band": str(lambda_band[index]),
                 "history_depth": float(history_depth[index]),
                 "history_band": str(history_band[index]),
+                "recent_xg_5": float(frame.iloc[index]["home_recent_for"] + frame.iloc[index]["away_recent_for"]),
+                "recent_xg_10": float(frame.iloc[index]["home_recent_for_10"] + frame.iloc[index]["away_recent_for_10"]),
+                "recent_xg_15": float(frame.iloc[index]["home_recent_for_15"] + frame.iloc[index]["away_recent_for_15"]),
                 "recent_form_delta": float(recent_delta[index]),
                 "recent_form": str(recent_form[index]),
             })
