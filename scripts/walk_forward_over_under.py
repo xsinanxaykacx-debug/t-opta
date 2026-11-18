@@ -173,6 +173,11 @@ def calculate_confidence_rows(
     for cutoff in cutoffs:
         selected = confidence >= cutoff
         count = int(selected.sum())
+        selected_indices = np.flatnonzero(selected)
+        selected_order = np.argsort(confidence[selected_indices])[::-1]
+        top_indices = selected_indices[selected_order[:10]]
+        top_n = int(len(top_indices))
+        top_n_correct = int((predicted[top_indices] == y[top_indices]).sum())
         rows.append({
             "fold": fold,
             "model": model_name,
@@ -182,6 +187,9 @@ def calculate_confidence_rows(
             "coverage": float(count / len(y)) if len(y) else 0.0,
             "accuracy": float((predicted[selected] == y[selected]).mean()) if count else np.nan,
             "mean_confidence": float(confidence[selected].mean()) if count else np.nan,
+            "top_n_matches": top_n,
+            "top_n_correct": top_n_correct,
+            "top_n_accuracy": float(top_n_correct / top_n) if top_n else np.nan,
         })
     return rows
 
