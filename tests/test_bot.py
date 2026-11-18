@@ -114,3 +114,23 @@ def test_reliability_report_reports_market_bias_and_model_edge():
     assert np.isclose(high_bin["actual_freq"], 2 / 3)
     assert np.isclose(high_bin["market_bias"], high_bin["market_prob"] - 2 / 3)
     assert np.isclose(high_bin["edge_opportunity"], high_bin["model_prob"] - high_bin["market_prob"])
+
+
+def test_policy_gate_rejects_low_hit_rate():
+    results = pd.DataFrame([{"bets": 80, "hit": 0.64, "roi": 3.0}])
+    assert BOT.policy_check_passes(results) is False
+
+
+def test_policy_gate_rejects_negative_roi():
+    results = pd.DataFrame([{"bets": 80, "hit": 0.70, "roi": -0.1}])
+    assert BOT.policy_check_passes(results) is False
+
+
+def test_policy_gate_rejects_small_samples():
+    results = pd.DataFrame([{"bets": 49, "hit": 0.80, "roi": 8.0}])
+    assert BOT.policy_check_passes(results) is False
+
+
+def test_policy_gate_accepts_only_validated_positive_policy():
+    results = pd.DataFrame([{"bets": 80, "hit": 0.70, "roi": 2.0}])
+    assert BOT.policy_check_passes(results) is True
