@@ -34,3 +34,12 @@ def test_odds_aware_model_fits_calibrates_and_predicts_probabilities():
     assert probabilities.shape == (30,)
     assert np.isfinite(probabilities).all()
     assert ((probabilities > 0.0) & (probabilities < 1.0)).all()
+
+    prediction_frame = frame.iloc[210:].copy()
+    before = model.predict_proba(prediction_frame)
+    prediction_frame["odds_AvgC>2.5"] = 1.01
+    prediction_frame["odds_B365C<2.5"] = 99.0
+    prediction_frame["FTHG"] = 99
+    prediction_frame["FTAG"] = 99
+    after = model.predict_proba(prediction_frame)
+    assert np.allclose(before, after)
