@@ -264,3 +264,6 @@ Updated pooled flat-stake edge ROI across the 10 OOF folds:
   - `XG_GOAL_BLEND`: fixed 50/50 probability blend of xG-based and actual-goal Poisson candidates.
 - This is research only; do not change the production model until all ten chronological folds support it.
 - Final Test remains sealed. Main remains unchanged. No merge.
+
+
+- CI note: goal-based Poisson candidate commit `d654fe1836a63809a71e4202268877b24d57e11b` is on the diagnostics branch; its tests and walk-forward evaluation must complete before any adoption.
