@@ -54,6 +54,10 @@ MIN_POLICY_CHECK_BETS = 50
 MIN_POLICY_CHECK_HIT_RATE = 0.65
 MIN_POLICY_CHECK_ROI = 0.0
 
+# Current validation/final slices have prior exploratory overlap; keep both closed.
+POLICY_CHECK_CLEAN = False
+FINAL_HOLDOUT_CLEAN = False
+
 RANDOM_SEED = 42
 
 
@@ -1093,6 +1097,24 @@ def policy_check_passes(results):
     )
 
 
+def final_holdout_is_fresh(test_df):
+    """The fresh holdout must start after the legacy-scored dataset ends."""
+    if test_df is None or test_df.empty:
+        return False
+    legacy_end = pd.Timestamp("2026-03-14", tz="UTC")
+    return bool(test_df["Date"].min().floor("D") > legacy_end)
+
+
+def final_test_is_openable(policy_passed, test_df):
+    """Require a clean validation gate and a genuinely fresh final holdout."""
+    return bool(
+        policy_passed
+        and POLICY_CHECK_CLEAN
+        and FINAL_HOLDOUT_CLEAN
+        and final_holdout_is_fresh(test_df)
+    )
+
+
 # ============================================================
 # 10. ANA AKIŞ
 # ============================================================
@@ -1183,6 +1205,15 @@ def main(path):
 
     output_dir = Path("t_opta_output")
     output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "feature_audit.txt").write_text(
+        "CURRENT-MATCH Home_xG/Away_xG are not direct model inputs; they update team/league history only after all fixtures in the same UTC day are featured.\n"
+        "FTHG/FTAG are target labels only.\n"
+        "Train, calibration, policy-select, policy-check and final-test boundaries are UTC-day aligned.\n"
+        "Odds source timestamps are not present; pre-kickoff availability cannot be independently verified.\n"
+        "Policy Check is marked non-clean after exploratory comparisons.\n"
+        "The source CSV exactly matches the legacy-scored dataset; its later holdout period overlaps 2025-10-13 through 2026-03-14.\n",
+        encoding="utf-8",
+    )
 
     print("\n" + "=" * 70)
 
@@ -1301,9 +1332,14 @@ def main(path):
                 f"and ROI > {MIN_POLICY_CHECK_ROI:.1f}%."
             )
 
-    # Do not open or score the final holdout until the frozen policy passes.
-    if not policy_passed:
-        print("\nFINAL TEST SEALED — NO BET. Continue development on train/validation only.")
+    if not POLICY_CHECK_CLEAN:
+        print("\nPOLICY CHECK NOT CLEAN — obtain a fresh chronological validation slice.")
+    elif not FINAL_HOLDOUT_CLEAN or not final_holdout_is_fresh(test):
+        print("\nFINAL TEST SEALED — current CSV overlaps a legacy-scored period. Supply fresh post-2026-03-14 data.")
+    elif not policy_passed:
+        print("\nFINAL TEST SEALED — NO BET. Validation policy did not pass.")
+
+    if not final_test_is_openable(policy_passed, test):
         print(f"Validation diagnostics saved: {output_dir.resolve()}")
         return
 

@@ -134,3 +134,27 @@ def test_policy_gate_rejects_small_samples():
 def test_policy_gate_accepts_only_validated_positive_policy():
     results = pd.DataFrame([{"bets": 80, "hit": 0.70, "roi": 2.0}])
     assert BOT.policy_check_passes(results) is True
+
+
+def test_final_holdout_stays_closed_when_validation_or_holdout_is_not_clean():
+    assert BOT.POLICY_CHECK_CLEAN is False
+    assert BOT.FINAL_HOLDOUT_CLEAN is False
+    old_test = pd.DataFrame({"Date": pd.to_datetime(["2026-03-14T23:00:00Z"], utc=True)})
+    fresh_test = pd.DataFrame({"Date": pd.to_datetime(["2026-03-15T00:00:00Z"], utc=True)})
+    assert BOT.final_test_is_openable(policy_passed=True, test_df=old_test) is False
+    assert BOT.final_test_is_openable(policy_passed=True, test_df=fresh_test) is False
+
+
+def test_freshness_guard_requires_dates_after_legacy_scored_period():
+    old_test = pd.DataFrame({"Date": pd.to_datetime(["2026-03-14T23:00:00Z"], utc=True)})
+    fresh_test = pd.DataFrame({"Date": pd.to_datetime(["2026-03-15T00:00:00Z"], utc=True)})
+    assert BOT.final_holdout_is_fresh(old_test) is False
+    assert BOT.final_holdout_is_fresh(fresh_test) is True
+
+
+def test_final_test_opens_only_when_both_integrity_flags_and_policy_pass(monkeypatch):
+    monkeypatch.setattr(BOT, "POLICY_CHECK_CLEAN", True)
+    monkeypatch.setattr(BOT, "FINAL_HOLDOUT_CLEAN", True)
+    fresh_test = pd.DataFrame({"Date": pd.to_datetime(["2026-03-15T00:00:00Z"], utc=True)})
+    assert BOT.final_test_is_openable(policy_passed=True, test_df=fresh_test) is True
+    assert BOT.final_test_is_openable(policy_passed=False, test_df=fresh_test) is False
