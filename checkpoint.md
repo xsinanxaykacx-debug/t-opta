@@ -82,3 +82,17 @@
 3. Improve the model on Train/Validation only; current hybrid does not beat market baseline.
 4. Establish a fresh Policy Select / Policy Check protocol on new data.
 5. Open a new final holdout only after the new validation gate passes.
+
+## Odds-only high-odds model — 2026-11-18
+- Created isolated module `odds_only_bot.py`; the existing hybrid `BOT.py` was not overwritten.
+- Predictor inputs are exclusively derived from a complete pre-match Over/Under 2.5 odds pair: de-vigged Over probability, bookmaker margin, log Over odds, and log Under odds.
+- No xG, goals history, shots, possession, corners, squad value, team names, or match-result fields enter the predictor matrix. `FTHG` and `FTAG` are used only to construct the Over 2.5 target label and score predictions.
+- Odds source selection: complete Avg pair first; if unavailable, complete B365 pair. Never mix one side from Avg with the other from B365.
+- Evaluation uses a chronological split on complete UTC dates. The last 15% is explicitly sealed and not evaluated. The first 70% is used for fitting and the following 15% for development validation.
+- High-odds directional results are reported for the model-selected side only when its odds are between 1.60 and 2.50. Results are also broken into 1.60–1.80, 1.80–2.00, 2.00–2.25, and 2.25–2.50 bands.
+- ROI is calculated per individual bet (win: odds minus one; loss: minus one unit), not by multiplying hit rate by average odds.
+- Fixed expected-return filters of 0%, 2%, and 5% are reported separately; they are not tuned on the sealed holdout.
+- Added `tests/test_odds_only_bot.py` for odds-only feature isolation, complete-pair fallback, whole-day chronological splits, exact per-bet ROI, and 1.60–2.50 eligibility.
+- Critical limitation: the source CSV has no odds capture timestamps. Avg/B365 fields cannot yet be independently proven to have been captured before kickoff. The script prints this warning and must not be described as verified pre-match until the data provenance is confirmed.
+- Execution status: source and tests committed to branch; full repository pytest / real-data validation pending CI and dataset availability. No accuracy or profitability claim is made yet.
+- Branch: `feature/odds-only-high-odds-model`.
