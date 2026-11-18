@@ -19,6 +19,7 @@ from sklearn.metrics import accuracy_score, brier_score_loss, log_loss, roc_auc_
 
 from experiments.market_baseline import MarketBaseline
 from experiments.odds_aware import OddsAwareModel
+from experiments.history_features import add_xg18_historical_features
 from experiments.poisson_baseline import PoissonBaseline
 from validation.experiment_protocol import (
     EXPECTED_SPLIT_SIZES,
@@ -95,13 +96,7 @@ def load_dataset(path: Path) -> pd.DataFrame:
         ]
     )
     # Internal model inputs are explicitly named as pre-match / historical.
-    validate_feature_columns(
-        [
-            "pre_match_market_probability",
-            "hist_poisson_probability",
-            "pre_match_market_available",
-        ]
-    )
+    validate_feature_columns(OddsAwareModel.feature_names)
     return frame
 
 
@@ -406,7 +401,7 @@ def build_odds_buckets(
 def run_experiment(data_path: Path, output_dir: Path) -> dict[str, Any]:
     frame = load_dataset(data_path)
     frame["_source_row"] = np.arange(len(frame), dtype=int)
-    featured = PoissonBaseline.add_historical_features(frame)
+    featured, history_metadata = add_xg18_historical_features(frame, Path("xg18.csv"))
     raw_partitions = make_partitions(featured)
     effective, purged = purge_same_calendar_day_boundaries(raw_partitions)
 
@@ -421,6 +416,7 @@ def run_experiment(data_path: Path, output_dir: Path) -> dict[str, Any]:
     manifest = {
         "dataset": str(data_path.name),
         "dataset_git_blob_sha": DATASET_GIT_BLOB_SHA,
+        "historical_source": history_metadata,
         "total_rows": EXPECTED_TOTAL_ROWS,
         "split_sizes_raw": EXPECTED_SPLIT_SIZES,
         "split_index_ranges": {
