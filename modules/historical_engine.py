@@ -21,13 +21,28 @@ NUMERIC_COLUMNS = (
 )
 
 
-class HistoricalEngine:
-    """Loads the repository dataset and exposes strictly pre-match history.
+def filter_strict_past(
+    frame: pd.DataFrame, target_date, date_col: str = "Date"
+) -> pd.DataFrame:
+    """Keep only earlier calendar days; same-day rows are always excluded.
 
-    The source CSV is never modified. Rows with missing/unparseable dates remain
-    in data for audit, but cannot be returned by time-bounded history queries.
-    Only rows with a completed full-time score can contribute to result history.
+    This conservative rule is intentional because xg18 timestamps do not
+    establish reliable kickoff ordering for matches on the same date.
     """
+    if not isinstance(frame, pd.DataFrame):
+        raise TypeError("frame must be a pandas DataFrame.")
+    if date_col not in frame.columns:
+        raise KeyError(f"Date column not found: {date_col}")
+    target = pd.to_datetime(target_date, errors="coerce", utc=True)
+    if pd.isna(target):
+        raise ValueError(f"Invalid target_date: {target_date!r}")
+    dates = pd.to_datetime(frame[date_col], errors="coerce", utc=True)
+    mask = dates.notna() & (dates.dt.normalize() < target.normalize())
+    return frame.loc[mask].copy()
+
+
+class HistoricalEngine:
+    """Loads the repository dataset and exposes strictly pre-match history."""
 
     def __init__(self, data_path: str | Path = "data/raw/xg18.csv"):
         requested = Path(data_path)
@@ -124,7 +139,7 @@ class HistoricalEngine:
     def get_team_history(
         self, team_name: str, before_date, league: str | None = None
     ) -> pd.DataFrame:
-        """Return completed prior team matches, newest first; cutoff is excluded."""
+        """Return completed prior team matches from earlier calendar days only."""
         if not isinstance(team_name, str) or not team_name.strip():
             raise ValueError("team_name must be a non-empty string.")
         cutoff = self._utc_timestamp(before_date)
@@ -134,15 +149,17 @@ class HistoricalEngine:
                 "Team", "Opponent", "TeamSide", "TeamGoals", "OpponentGoals",
                 "TeamXG", "OpponentXG"
             ])
-        mask = source["Date"] < cutoff
+        history = filter_strict_past(source, cutoff)
         if league is not None:
-            mask &= source["League"].str.casefold() == league.strip().casefold()
-        return source.loc[mask].sort_values(
+            history = history.loc[
+                history["League"].str.casefold() == league.strip().casefold()
+            ]
+        return history.sort_values(
             ["Date", "MatchID"], ascending=[False, False], kind="stable"
         ).copy().reset_index(drop=True)
 
     def get_match_history(self, home_team: str, away_team: str, before_date) -> pd.DataFrame:
-        """Return prior completed head-to-head matches, excluding target timestamp."""
+        """Return prior completed head-to-head matches, excluding target calendar day."""
         if not isinstance(away_team, str) or not away_team.strip():
             raise ValueError("away_team must be a non-empty string.")
         history = self.get_team_history(home_team, before_date)
