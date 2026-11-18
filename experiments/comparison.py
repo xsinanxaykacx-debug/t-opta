@@ -410,213 +410,21 @@ def run_experiment(data_path: Path, output_dir: Path) -> dict[str, Any]:
     raw_partitions = make_partitions(featured)
     effective, purged = purge_same_calendar_day_boundaries(raw_partitions)
 
-    train = effective["train"]
-    calibration = effective["calibration"]
-    policy_select = effective["policy_select"]
-    policy_check = effective["policy_check"]
-    final_test = effective["final_test"]
-
-    assert_final_test_sealed(["train"])
-    assert_final_test_sealed(["calibration"])
-    assert_final_test_sealed(["policy_select"])
-    assert_final_test_sealed(["policy_check"])
-
-    odds_model = OddsAwareModel()
-    odds_model.fit(train)
-    odds_model.calibrate(calibration)
-
-    model_probabilities: dict[str, np.ndarray] = {
-        "market": MarketBaseline().predict_proba(featured),
-        "poisson": PoissonBaseline().predict_proba(featured),
-        "odds_aware": odds_model.predict_proba(featured),
-    }
-
-    policy_thresholds: dict[str, float | None] = {}
-    policy_selection: dict[str, Any] = {}
-    policy_check_results: dict[str, Any] = {}
-
-    # Model and confidence-policy selection use POLICY_SELECT only.
-    select_rows = policy_select["_source_row"].to_numpy(dtype=int)
-    select_y = labels(policy_select)
-    select_market_valid = market_components(policy_select)["market_valid"]
-    for model_name, full_probability in model_probabilities.items():
-        selection = choose_confidence_policy(
-            select_y,
-            full_probability[select_rows],
-            select_market_valid,
-        )
-        policy_selection[model_name] = selection
-        policy_thresholds[model_name] = (
-            selection["threshold"] if selection is not None else None
-        )
-
-    eligible_candidates = [
-        (name, result)
-        for name, result in policy_selection.items()
-        if result is not None
-    ]
-    selected_model = (
-        max(
-            eligible_candidates,
-            key=lambda item: (item[1]["bets"], item[1]["hit_rate"]),
-        )[0]
-        if eligible_candidates
-        else None
-    )
-
-    # POLICY_CHECK is an untouched confirmation of thresholds selected above.
-    check_rows = policy_check["_source_row"].to_numpy(dtype=int)
-    check_y = labels(policy_check)
-    check_market_valid = market_components(policy_check)["market_valid"]
-    for model_name, full_probability in model_probabilities.items():
-        policy_check_results[model_name] = selective_metrics(
-            check_y,
-            full_probability[check_rows],
-            check_market_valid,
-            policy_thresholds[model_name],
-            MIN_CHECK_BETS,
-        )
-
-    selected_check = (
-        policy_check_results[selected_model]
-        if selected_model is not None
-        else None
-    )
-    policy_gate_passed = bool(
-        selected_model is not None
-        and selected_check is not None
-        and selected_check["target_met"]
-    )
-
     output_dir.mkdir(parents=True, exist_ok=True)
-    selection_report = {
-        "selected_model_on_policy_select": selected_model,
-        "policy_selection": policy_selection,
-        "policy_check": policy_check_results,
-        "policy_gate_passed": policy_gate_passed,
+    offsets = {
+        name: (
+            int(raw_partitions[name]["_source_row"].min()),
+            int(raw_partitions[name]["_source_row"].max()) + 1,
+        )
+        for name in PARTITION_ORDER
     }
-
-    # Do not read Final Test labels if the frozen candidate fails POLICY_CHECK.
-    if not policy_gate_passed:
-        summary = {
-            "target_hit_rate": TARGET_HIT_RATE,
-            "selected_model": selected_model,
-            **selection_report,
-            "final_test_opened": False,
-            "ready": False,
-            "interpretation": (
-                "NOT READY: no preselected model passed POLICY_CHECK. "
-                "FINAL_TEST remains sealed and was not evaluated."
-            ),
-        }
-        (output_dir / "experiment_summary.json").write_text(
-            json.dumps(summary, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        print(json.dumps(summary, ensure_ascii=False, indent=2))
-        return summary
-
-    # The candidate and all thresholds are frozen before this point.
-    assert_final_test_sealed(["train", "calibration", "policy_select", "policy_check"])
-    final_rows = final_test["_source_row"].to_numpy(dtype=int)
-    final_y = labels(final_test)
-    final_market_valid = market_components(final_test)["market_valid"]
-
-    final_results: dict[str, Any] = {}
-    model_metrics_rows: list[dict[str, Any]] = []
-    for model_name, full_probability in model_probabilities.items():
-        final_probability = full_probability[final_rows]
-        eligible = final_market_valid
-        metrics = safe_metrics(final_y[eligible], final_probability[eligible])
-        selective = selective_metrics(
-            final_y,
-            final_probability,
-            final_market_valid,
-            policy_thresholds[model_name],
-            MIN_FINAL_TEST_BETS,
-        )
-        final_results[model_name] = {
-            **metrics,
-            "selective": selective,
-            "preselected_candidate": model_name == selected_model,
-        }
-
-        model_metrics_rows.append(
-            {
-                "model": model_name,
-                "partition": "final_test",
-                **metrics,
-                "common_market_eligible": int(eligible.sum()),
-                "raw_partition_rows": int(len(final_test)),
-                "policy_threshold_frozen": policy_thresholds[model_name],
-                "selective_bets": selective["bets"],
-                "selective_hit_rate": selective["hit_rate"],
-                "selective_target_met": selective["target_met"],
-            }
-        )
-
-    # Descriptive reports are written only after candidate/policy freeze.
-    for partition_name in ("train", "calibration", "policy_select", "policy_check"):
-        part = effective[partition_name]
-        source_rows = part["_source_row"].to_numpy(dtype=int)
-        y_part = labels(part)
-        valid = market_components(part)["market_valid"]
-        for model_name, full_probability in model_probabilities.items():
-            metrics = safe_metrics(y_part[valid], full_probability[source_rows][valid])
-            model_metrics_rows.append(
-                {
-                    "model": model_name,
-                    "partition": partition_name,
-                    **metrics,
-                    "common_market_eligible": int(valid.sum()),
-                    "raw_partition_rows": int(
-                        len(raw_partitions[partition_name])
-                    ),
-                    "effective_partition_rows": int(len(part)),
-                }
-            )
-
-    metrics_frame = pd.DataFrame(model_metrics_rows)
-    metrics_frame.to_csv(output_dir / "model_metrics.csv", index=False)
-
-    directional = build_directional_roi(model_probabilities, effective)
-    directional.to_csv(output_dir / "directional_roi.csv", index=False)
-
-    buckets = build_odds_buckets(
-        model_probabilities, policy_thresholds, effective
-    )
-    buckets.to_csv(output_dir / "odds_buckets.csv", index=False)
-
-    final_predictions = pd.DataFrame(
-        {
-            "MatchID": final_test["MatchID"].to_numpy(),
-            "Date": final_test["Date"].astype(str).to_numpy(),
-            "League": final_test["League"].to_numpy(),
-            "HomeTeam": final_test["HomeTeam"].to_numpy(),
-            "AwayTeam": final_test["AwayTeam"].to_numpy(),
-            "actual_over_2_5": final_y,
-            "p_market_over": model_probabilities["market"][final_rows],
-            "p_poisson_over": model_probabilities["poisson"][final_rows],
-            "p_odds_aware_over": model_probabilities["odds_aware"][final_rows],
-            "market_valid": final_market_valid,
-            "over_odds": market_components(final_test)["over_odds"],
-            "under_odds": market_components(final_test)["under_odds"],
-        }
-    )
-    final_predictions.to_csv(
-        output_dir / "final_test_predictions.csv", index=False
-    )
-
     manifest = {
         "dataset": str(data_path.name),
         "dataset_git_blob_sha": DATASET_GIT_BLOB_SHA,
         "total_rows": EXPECTED_TOTAL_ROWS,
         "split_sizes_raw": EXPECTED_SPLIT_SIZES,
         "split_index_ranges": {
-            name: [
-                int(raw_partitions[name]["_source_row"].min()),
-                int(raw_partitions[name]["_source_row"].max()) + 1,
-            ]
+            name: [offsets[name][0], offsets[name][1]]
             for name in PARTITION_ORDER
         },
         "split_dates_raw": {
@@ -638,6 +446,253 @@ def run_experiment(data_path: Path, output_dir: Path) -> dict[str, Any]:
     (output_dir / "split_manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2),
         encoding="utf-8",
+    )
+
+    train = effective["train"]
+    calibration = effective["calibration"]
+    policy_select = effective["policy_select"]
+    policy_check = effective["policy_check"]
+    final_test = effective["final_test"]
+
+    assert_final_test_sealed(["train"])
+    assert_final_test_sealed(["calibration"])
+    assert_final_test_sealed(["policy_select"])
+    assert_final_test_sealed(["policy_check"])
+
+    odds_model = OddsAwareModel()
+    odds_model.fit(train)
+    odds_model.calibrate(calibration)
+
+    model_objects = {
+        "market": MarketBaseline(),
+        "poisson": PoissonBaseline(),
+        "odds_aware": odds_model,
+    }
+    model_probabilities = {
+        name: np.full(len(featured), np.nan, dtype=float)
+        for name in model_objects
+    }
+
+    # Generate predictions only for partitions preceding FINAL_TEST.
+    pre_final_parts = [
+        effective[name] for name in PARTITION_ORDER[:-1]
+    ]
+    pre_final_frame = pd.concat(pre_final_parts, ignore_index=True)
+    pre_final_frame = pre_final_frame.sort_values(
+        "_source_row", kind="stable"
+    ).reset_index(drop=True)
+    pre_final_rows = pre_final_frame["_source_row"].to_numpy(dtype=int)
+    for model_name, model in model_objects.items():
+        model_probabilities[model_name][pre_final_rows] = model.predict_proba(
+            pre_final_frame
+        )
+
+    # POLICY_SELECT alone chooses each threshold and the candidate model.
+    select_rows = policy_select["_source_row"].to_numpy(dtype=int)
+    select_y = labels(policy_select)
+    select_market_valid = market_components(policy_select)["market_valid"]
+    policy_thresholds: dict[str, float | None] = {}
+    policy_selection: dict[str, Any] = {}
+
+    for model_name in model_objects:
+        selection = choose_confidence_policy(
+            select_y,
+            model_probabilities[model_name][select_rows],
+            select_market_valid,
+        )
+        policy_selection[model_name] = selection
+        policy_thresholds[model_name] = (
+            selection["threshold"] if selection is not None else None
+        )
+
+    eligible_candidates = [
+        (name, result)
+        for name, result in policy_selection.items()
+        if result is not None
+    ]
+    selected_model = (
+        max(
+            eligible_candidates,
+            key=lambda item: (item[1]["bets"], item[1]["hit_rate"]),
+        )[0]
+        if eligible_candidates
+        else None
+    )
+
+    # POLICY_CHECK independently validates the thresholds chosen above.
+    check_rows = policy_check["_source_row"].to_numpy(dtype=int)
+    check_y = labels(policy_check)
+    check_market_valid = market_components(policy_check)["market_valid"]
+    policy_check_results: dict[str, Any] = {}
+    for model_name in model_objects:
+        policy_check_results[model_name] = selective_metrics(
+            check_y,
+            model_probabilities[model_name][check_rows],
+            check_market_valid,
+            policy_thresholds[model_name],
+            MIN_CHECK_BETS,
+        )
+
+    selected_check = (
+        policy_check_results[selected_model]
+        if selected_model is not None
+        else None
+    )
+    policy_gate_passed = bool(
+        selected_model is not None
+        and selected_check is not None
+        and selected_check["target_met"]
+    )
+
+    policy_rows = []
+    for model_name in model_objects:
+        selection = policy_selection[model_name]
+        check = policy_check_results[model_name]
+        policy_rows.append(
+            {
+                "model": model_name,
+                "selected_on_policy_select": model_name == selected_model,
+                "confidence_threshold": policy_thresholds[model_name],
+                "select_bets": selection["bets"] if selection else 0,
+                "select_hit_rate": selection["hit_rate"] if selection else None,
+                "check_bets": check["bets"],
+                "check_hit_rate": check["hit_rate"],
+                "check_target_met": check["target_met"],
+            }
+        )
+    pd.DataFrame(policy_rows).to_csv(
+        output_dir / "policy_results.csv", index=False
+    )
+
+    selection_report = {
+        "selected_model_on_policy_select": selected_model,
+        "policy_selection": policy_selection,
+        "policy_check": policy_check_results,
+        "policy_gate_passed": policy_gate_passed,
+    }
+
+    # If the candidate fails, FINAL_TEST predictions and labels remain untouched.
+    if not policy_gate_passed:
+        summary = {
+            "target_hit_rate": TARGET_HIT_RATE,
+            "selected_model": selected_model,
+            **selection_report,
+            "final_test_opened": False,
+            "ready": False,
+            "interpretation": (
+                "NOT READY: no preselected model passed POLICY_CHECK. "
+                "FINAL_TEST remains sealed and was not predicted or evaluated."
+            ),
+        }
+        (output_dir / "experiment_summary.json").write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return summary
+
+    # Candidate and all thresholds are frozen. Only now generate FINAL_TEST
+    # predictions and read its labels for the single confirmatory evaluation.
+    assert_final_test_sealed(
+        ["train", "calibration", "policy_select", "policy_check"]
+    )
+    final_rows = final_test["_source_row"].to_numpy(dtype=int)
+    for model_name, model in model_objects.items():
+        model_probabilities[model_name][final_rows] = model.predict_proba(
+            final_test
+        )
+
+    final_y = labels(final_test)
+    final_market = market_components(final_test)
+    final_market_valid = final_market["market_valid"]
+
+    final_results: dict[str, Any] = {}
+    model_metrics_rows: list[dict[str, Any]] = []
+    for model_name in model_objects:
+        final_probability = model_probabilities[model_name][final_rows]
+        metrics = safe_metrics(
+            final_y[final_market_valid],
+            final_probability[final_market_valid],
+        )
+        selective = selective_metrics(
+            final_y,
+            final_probability,
+            final_market_valid,
+            policy_thresholds[model_name],
+            MIN_FINAL_TEST_BETS,
+        )
+        final_results[model_name] = {
+            **metrics,
+            "selective": selective,
+            "preselected_candidate": model_name == selected_model,
+        }
+        model_metrics_rows.append(
+            {
+                "model": model_name,
+                "partition": "final_test",
+                **metrics,
+                "common_market_eligible": int(final_market_valid.sum()),
+                "raw_partition_rows": int(len(final_test)),
+                "policy_threshold_frozen": policy_thresholds[model_name],
+                "selective_bets": selective["bets"],
+                "selective_hit_rate": selective["hit_rate"],
+                "selective_target_met": selective["target_met"],
+            }
+        )
+
+    # Descriptive metrics for the earlier partitions; never used to tune
+    # thresholds after the candidate has been selected.
+    for partition_name in PARTITION_ORDER[:-1]:
+        part = effective[partition_name]
+        source_rows = part["_source_row"].to_numpy(dtype=int)
+        y_part = labels(part)
+        valid = market_components(part)["market_valid"]
+        for model_name in model_objects:
+            metrics = safe_metrics(
+                y_part[valid],
+                model_probabilities[model_name][source_rows][valid],
+            )
+            model_metrics_rows.append(
+                {
+                    "model": model_name,
+                    "partition": partition_name,
+                    **metrics,
+                    "common_market_eligible": int(valid.sum()),
+                    "raw_partition_rows": int(
+                        len(raw_partitions[partition_name])
+                    ),
+                    "effective_partition_rows": int(len(part)),
+                }
+            )
+
+    pd.DataFrame(model_metrics_rows).to_csv(
+        output_dir / "model_metrics.csv", index=False
+    )
+    build_directional_roi(model_probabilities, effective).to_csv(
+        output_dir / "directional_roi.csv", index=False
+    )
+    build_odds_buckets(
+        model_probabilities, policy_thresholds, effective
+    ).to_csv(output_dir / "odds_buckets.csv", index=False)
+
+    final_predictions = pd.DataFrame(
+        {
+            "MatchID": final_test["MatchID"].to_numpy(),
+            "Date": final_test["Date"].astype(str).to_numpy(),
+            "League": final_test["League"].to_numpy(),
+            "HomeTeam": final_test["HomeTeam"].to_numpy(),
+            "AwayTeam": final_test["AwayTeam"].to_numpy(),
+            "actual_over_2_5": final_y,
+            "p_market_over": model_probabilities["market"][final_rows],
+            "p_poisson_over": model_probabilities["poisson"][final_rows],
+            "p_odds_aware_over": model_probabilities["odds_aware"][final_rows],
+            "market_valid": final_market_valid,
+            "over_odds": final_market["over_odds"],
+            "under_odds": final_market["under_odds"],
+        }
+    )
+    final_predictions.to_csv(
+        output_dir / "final_test_predictions.csv", index=False
     )
 
     candidate_final = final_results[selected_model]["selective"]
@@ -662,7 +717,6 @@ def run_experiment(data_path: Path, output_dir: Path) -> dict[str, Any]:
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return summary
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=Path, default=Path("xgo.csv"))
