@@ -556,6 +556,36 @@ class BlendModel:
         )
 
 
+class HistoricalXGModel(BlendModel):
+    """Prediction model using only strictly historical xG-derived features.
+
+    Bookmaker odds are intentionally excluded until the source and exact
+    prediction-time availability of every odds column are independently proven.
+    """
+
+    @staticmethod
+    def _X(df):
+        required = ("lambda_home", "lambda_away", "p_poisson")
+        missing = [column for column in required if column not in df.columns]
+        if missing:
+            raise ValueError(
+                "Historical XG features missing: " + ", ".join(missing)
+            )
+
+        X = np.column_stack([
+            df["lambda_home"].to_numpy(dtype=float),
+            df["lambda_away"].to_numpy(dtype=float),
+            df["p_poisson"].to_numpy(dtype=float),
+        ])
+
+        return np.nan_to_num(
+            X,
+            nan=1.25,
+            posinf=5.0,
+            neginf=0.05,
+        )
+
+
 # ============================================================
 # 6. KALİBRASYON METRİĞİ
 # ============================================================
@@ -1076,7 +1106,7 @@ def main(path, skip_final_test=False):
         "\nModel eğitiliyor..."
     )
 
-    model = BlendModel()
+    model = HistoricalXGModel()
 
     model.fit(train)
 
