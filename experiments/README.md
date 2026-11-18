@@ -20,7 +20,7 @@ target, not a promised outcome.
 - `history_features.py`: joins each xgo fixture to the broader `xg18.csv`
   history by MatchID. The source contains 18,509 matches; the join is pinned
   by Git blob SHA and uses the existing audited FeatureEngine's strict
-  prior-calendar-day rule.
+  prior-calendar-day and same-league rule.
 - `poisson_baseline.py`: derives the Over 2.5 Poisson probability from
   historical home/away xG EWMA and attack-vs-defence rates.
 - `odds_aware.py`: regularised logistic model combining de-vigged market
@@ -46,7 +46,8 @@ The odds-bearing target snapshot is `xgo.csv` (Git blob SHA
 is `xg18.csv` (Git blob SHA
 `ed2213748abb12a1815c11376931b97568c17cf9`). xgo rows are stable-sorted by
 `Date, League, HomeTeam, AwayTeam`; historical features are joined by
-`MatchID` from xg18, including matches without bookmaker odds.
+`MatchID` from xg18, including matches without bookmaker odds. Team and H2H
+history is scoped to the target league and strictly earlier calendar days.
 
 The exact raw row counts remain fixed. If a boundary splits fixtures on the
 same calendar day, those boundary-day rows are purged from the preceding
