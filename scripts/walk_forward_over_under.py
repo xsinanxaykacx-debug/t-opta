@@ -1,7 +1,8 @@
 """Expanding-window Over/Under 2.5 research using pre-Final-Test history only.
 
-This script deliberately caps development data at BOT.N_TRAIN rows. It never
-loads or evaluates the policy validation partitions or the sealed Final Test.
+The input CSV is read and cleaned to establish chronological row order, then
+capped at BOT.N_TRAIN before feature generation, model fitting or scoring.
+Policy validation partitions and the sealed Final Test are not evaluated.
 """
 from __future__ import annotations
 
