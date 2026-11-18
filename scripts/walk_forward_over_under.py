@@ -15,6 +15,9 @@ import pandas as pd
 from sklearn.isotonic import IsotonicRegression
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score
 from scipy.stats import nbinom, poisson
 
@@ -88,6 +91,94 @@ class HistGradientBoostingCandidate:
             probabilities = self.calibrator.predict(probabilities)
         return np.clip(probabilities, 1e-6, 1.0 - 1e-6)
 
+
+
+class LogisticOverUnderCandidate:
+    """Chronologically tuned binary logistic model on historical xG features."""
+
+    C_GRID = (0.01, 0.1, 1.0, 10.0)
+
+    def __init__(self):
+        self.pipeline = None
+        self.calibrator = None
+        self.best_c = None
+        self.validation_scores = {}
+
+    @staticmethod
+    def _X(frame: pd.DataFrame) -> np.ndarray:
+        return HistoricalXGModel._X(frame)
+
+    @staticmethod
+    def _y(frame: pd.DataFrame) -> np.ndarray:
+        return BlendModel._y(frame)
+
+    @staticmethod
+    def _make_pipeline(c_value: float) -> Pipeline:
+        return Pipeline([
+            ("imputer", SimpleImputer(strategy="median", keep_empty_features=True)),
+            ("scaler", StandardScaler()),
+            ("classifier", LogisticRegression(
+                C=float(c_value),
+                solver="lbfgs",
+                max_iter=1500,
+                random_state=42,
+            )),
+        ])
+
+    def fit(self, train: pd.DataFrame):
+        dates = pd.to_datetime(train["Date"], utc=True, errors="coerce")
+        if dates.isna().any():
+            raise ValueError("Logistic candidate requires valid chronological training dates.")
+        days = pd.Series(dates.dt.normalize().unique()).sort_values().reset_index(drop=True)
+        if len(days) < 2:
+            raise ValueError("Logistic candidate needs at least two distinct training days.")
+        split_at = max(1, min(len(days) - 1, int(np.floor(len(days) * 0.8))))
+        validation_start = pd.Timestamp(days.iloc[split_at])
+        normalized_days = dates.dt.normalize()
+        fit_mask = (normalized_days < validation_start).to_numpy()
+        validation_mask = ~fit_mask
+        y = self._y(train)
+        if np.unique(y[fit_mask]).size != 2 or np.unique(y[validation_mask]).size != 2:
+            raise ValueError("Logistic inner chronological split must contain both outcome classes.")
+
+        X = self._X(train)
+        scores = {}
+        for c_value in self.C_GRID:
+            candidate = self._make_pipeline(c_value)
+            candidate.fit(X[fit_mask], y[fit_mask])
+            probabilities = candidate.predict_proba(X[validation_mask])[:, 1]
+            scores[c_value] = float(log_loss(y[validation_mask], probabilities, labels=[0, 1]))
+
+        self.best_c = min(self.C_GRID, key=lambda value: (scores[value], value))
+        self.validation_scores = scores
+        self.pipeline = self._make_pipeline(self.best_c)
+        self.pipeline.fit(X, y)
+        self.calibrator = None
+        return self
+
+    def raw_predict(self, frame: pd.DataFrame) -> np.ndarray:
+        if self.pipeline is None:
+            raise RuntimeError("Logistic candidate has not been fitted.")
+        return self.pipeline.predict_proba(self._X(frame))[:, 1]
+
+    def calibrate(self, calibration: pd.DataFrame):
+        probabilities = self.raw_predict(calibration)
+        labels = self._y(calibration)
+        if np.unique(labels).size != 2:
+            raise ValueError("Logistic calibration requires both outcome classes.")
+        self.calibrator = IsotonicRegression(
+            y_min=0.001,
+            y_max=0.999,
+            out_of_bounds="clip",
+        )
+        self.calibrator.fit(probabilities, labels)
+        return self
+
+    def predict_proba(self, frame: pd.DataFrame) -> np.ndarray:
+        probabilities = self.raw_predict(frame)
+        if self.calibrator is not None:
+            probabilities = self.calibrator.predict(probabilities)
+        return np.clip(probabilities, 1e-6, 1.0 - 1e-6)
 
 class NegativeBinomialCandidate:
     """Train-only overdispersed total-goals model using historical xG rates."""
