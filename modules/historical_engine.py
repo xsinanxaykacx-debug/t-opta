@@ -26,6 +26,7 @@ class HistoricalEngine:
 
     The source CSV is never modified. Rows with missing/unparseable dates remain
     in data for audit, but cannot be returned by time-bounded history queries.
+    Only rows with a completed full-time score can contribute to result history.
     """
 
     def __init__(self, data_path: str | Path = "data/raw/xg18.csv"):
@@ -39,7 +40,7 @@ class HistoricalEngine:
                 f"xG dataset not found. Checked: {', '.join(map(str, candidates))}"
             )
         self.data = self._load_data()
-        self.df = self.data  # Backwards-compatible alias; treat as read-only.
+        self.df = self.data
         self._team_index = self._build_team_index()
         self._match_index = self.data.set_index("MatchID", drop=False)
 
@@ -73,6 +74,8 @@ class HistoricalEngine:
             "columns": int(len(self.data.columns)),
             "dated_rows": int(self.data["Date"].notna().sum()),
             "undated_rows": int(self.data["Date"].isna().sum()),
+            "completed_score_rows": int(self.data[["FTHG", "FTAG"]].notna().all(axis=1).sum()),
+            "incomplete_score_rows": int(self.data[["FTHG", "FTAG"]].isna().any(axis=1).sum()),
             "duplicate_match_ids": int(self.data["MatchID"].duplicated().sum()),
             "leagues": sorted(self.data["League"].dropna().unique().tolist()),
             "seasons": sorted(self.data["Season"].dropna().unique().tolist()),
@@ -87,7 +90,11 @@ class HistoricalEngine:
         return timestamp
 
     def _build_team_index(self) -> dict[str, pd.DataFrame]:
-        dated = self.data.loc[self.data["Date"].notna()].copy()
+        dated = self.data.loc[
+            self.data["Date"].notna()
+            & self.data["FTHG"].notna()
+            & self.data["FTAG"].notna()
+        ].copy()
         home = dated.copy()
         home["Team"] = home["HomeTeam"]
         home["Opponent"] = home["AwayTeam"]
@@ -117,7 +124,7 @@ class HistoricalEngine:
     def get_team_history(
         self, team_name: str, before_date, league: str | None = None
     ) -> pd.DataFrame:
-        """Return prior team matches, newest first; exact-cutoff matches are excluded."""
+        """Return completed prior team matches, newest first; cutoff is excluded."""
         if not isinstance(team_name, str) or not team_name.strip():
             raise ValueError("team_name must be a non-empty string.")
         cutoff = self._utc_timestamp(before_date)
@@ -135,7 +142,7 @@ class HistoricalEngine:
         ).copy().reset_index(drop=True)
 
     def get_match_history(self, home_team: str, away_team: str, before_date) -> pd.DataFrame:
-        """Return prior head-to-head matches, excluding the target timestamp."""
+        """Return prior completed head-to-head matches, excluding target timestamp."""
         if not isinstance(away_team, str) or not away_team.strip():
             raise ValueError("away_team must be a non-empty string.")
         history = self.get_team_history(home_team, before_date)
