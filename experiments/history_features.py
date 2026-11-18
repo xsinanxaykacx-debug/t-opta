@@ -19,7 +19,7 @@ XG18_GIT_BLOB_SHA = "ed2213748abb12a1815c11376931b97568c17cf9"
 
 def git_blob_sha(path: Path) -> str:
     payload = path.read_bytes()
-    header = f"blob {len(payload)}\\0".encode("ascii")
+    header = f"blob {len(payload)}\0".encode("ascii")
     return hashlib.sha1(header + payload).hexdigest()
 
 
