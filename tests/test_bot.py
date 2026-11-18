@@ -150,3 +150,11 @@ def test_freshness_guard_requires_dates_after_legacy_scored_period():
     fresh_test = pd.DataFrame({"Date": pd.to_datetime(["2026-03-15T00:00:00Z"], utc=True)})
     assert BOT.final_holdout_is_fresh(old_test) is False
     assert BOT.final_holdout_is_fresh(fresh_test) is True
+
+
+def test_final_test_opens_only_when_both_integrity_flags_and_policy_pass(monkeypatch):
+    monkeypatch.setattr(BOT, "POLICY_CHECK_CLEAN", True)
+    monkeypatch.setattr(BOT, "FINAL_HOLDOUT_CLEAN", True)
+    fresh_test = pd.DataFrame({"Date": pd.to_datetime(["2026-03-15T00:00:00Z"], utc=True)})
+    assert BOT.final_test_is_openable(policy_passed=True, test_df=fresh_test) is True
+    assert BOT.final_test_is_openable(policy_passed=False, test_df=fresh_test) is False
