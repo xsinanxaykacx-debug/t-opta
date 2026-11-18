@@ -20,7 +20,10 @@ from experiments.comparison import (
     make_partitions,
     purge_same_calendar_day_boundaries,
 )
-from experiments.history_features import add_xg18_historical_features
+from experiments.history_features import (
+    FEATURE_CONTRACT_VERSION,
+    add_xg18_historical_features,
+)
 from experiments.odds_aware import OddsAwareModel
 
 
@@ -30,6 +33,11 @@ ROI_PATH = ROOT / "results" / "comparison" / "final_test_roi.json"
 DATA_PATH = ROOT / "xgo.csv"
 HISTORY_PATH = ROOT / "xg18.csv"
 OUTPUT_DIR = ROOT / "artifacts"
+
+# The 65% gate was demonstrated by this exact frozen experiment run. A model
+# build must not silently borrow that evidence after the experiment code changes.
+VALIDATED_EXPERIMENT_RUN_ID = 44330945792
+VALIDATED_EXPERIMENT_COMMIT = "32abf6b"
 
 
 def _load_and_verify_evidence() -> tuple[dict[str, Any], dict[str, Any]]:
@@ -43,6 +51,10 @@ def _load_and_verify_evidence() -> tuple[dict[str, Any], dict[str, Any]]:
     with ROI_PATH.open("r", encoding="utf-8") as stream:
         roi = json.load(stream)
 
+    if summary.get("experiment_run_id") != VALIDATED_EXPERIMENT_RUN_ID:
+        raise RuntimeError("Frozen experiment run ID does not match the approved evidence.")
+    if summary.get("experiment_commit") != VALIDATED_EXPERIMENT_COMMIT:
+        raise RuntimeError("Frozen experiment commit does not match the approved evidence.")
     if summary.get("ready") is not True:
         raise RuntimeError("The recorded experiment did not pass its Final Test gate.")
     if summary.get("selected_model_on_policy_select") != "odds_aware":
@@ -122,6 +134,11 @@ def train_production_model(
     metadata = {
         "model_name": "odds_aware",
         "model_version": "t-opta-odds-aware-v1",
+        "feature_contract_version": FEATURE_CONTRACT_VERSION,
+        "validation_evidence": {
+            "experiment_run_id": VALIDATED_EXPERIMENT_RUN_ID,
+            "experiment_commit": VALIDATED_EXPERIMENT_COMMIT,
+        },
         "target": "Over/Under 2.5 total goals",
         "confidence_threshold": float(selected["threshold"]),
         "selection_rule": (
