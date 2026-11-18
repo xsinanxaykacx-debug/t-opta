@@ -180,6 +180,65 @@ class LogisticOverUnderCandidate:
             probabilities = self.calibrator.predict(probabilities)
         return np.clip(probabilities, 1e-6, 1.0 - 1e-6)
 
+
+class RecentPoissonBlendCandidate:
+    """Calibrate a convex blend of long-term and opponent-adjusted recent Poisson rates."""
+
+    COMPONENTS = (
+        "p_poisson",
+        "p_poisson_recent_5",
+        "p_poisson_recent_10",
+        "p_poisson_recent_15",
+    )
+    GRID_STEPS = 20
+
+    def __init__(self):
+        self.weights = None
+        self.calibration_log_loss = None
+
+    @classmethod
+    def _matrix(cls, frame: pd.DataFrame) -> np.ndarray:
+        missing = [column for column in cls.COMPONENTS if column not in frame.columns]
+        if missing:
+            raise ValueError("Recent Poisson blend missing features: " + ", ".join(missing))
+        matrix = frame.loc[:, list(cls.COMPONENTS)].to_numpy(dtype=float)
+        if not np.isfinite(matrix).all():
+            raise ValueError("Recent Poisson blend features must be finite.")
+        return np.clip(matrix, 1e-6, 1.0 - 1e-6)
+
+    def calibrate(self, calibration: pd.DataFrame):
+        matrix = self._matrix(calibration)
+        labels = BlendModel._y(calibration)
+        if len(matrix) != len(labels) or np.unique(labels).size != 2:
+            raise ValueError("Recent Poisson blend calibration requires aligned binary labels.")
+
+        baseline = np.array([1.0, 0.0, 0.0, 0.0])
+        best_key = (float("inf"), float("inf"))
+        best_weights = None
+        steps = self.GRID_STEPS
+        for first in range(steps + 1):
+            for second in range(steps - first + 1):
+                for third in range(steps - first - second + 1):
+                    fourth = steps - first - second - third
+                    weights = np.array([first, second, third, fourth], dtype=float) / steps
+                    probabilities = np.clip(matrix @ weights, 1e-6, 1.0 - 1e-6)
+                    loss = float(log_loss(labels, probabilities, labels=[0, 1]))
+                    distance = float(np.abs(weights - baseline).sum())
+                    key = (loss, distance)
+                    if key < best_key:
+                        best_key = key
+                        best_weights = weights
+
+        self.weights = best_weights
+        self.calibration_log_loss = best_key[0]
+        return self
+
+    def predict_proba(self, frame: pd.DataFrame) -> np.ndarray:
+        if self.weights is None:
+            raise RuntimeError("Recent Poisson blend must be calibrated before prediction.")
+        probabilities = self._matrix(frame) @ self.weights
+        return np.clip(probabilities, 1e-6, 1.0 - 1e-6)
+
 class NegativeBinomialCandidate:
     """Train-only overdispersed total-goals model using historical xG rates."""
 
