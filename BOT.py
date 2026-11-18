@@ -190,6 +190,39 @@ def _recent_average(history, value_index: int, window: int, fallback: float) -> 
     return float(np.mean([item[value_index] for item in sample]))
 
 
+def _recent_average(history, value_index: int, window: int, fallback: float) -> float:
+    sample = history[-window:]
+    if not sample:
+        return float(fallback)
+    return float(np.mean([item[value_index] for item in sample]))
+
+
+def _recent_expected_goals(
+    home_for: float,
+    home_against: float,
+    away_for: float,
+    away_against: float,
+    league_average: float,
+    home_advantage: float,
+) -> tuple[float, float]:
+    league_average = max(float(league_average), 0.05)
+    lambda_home_recent = (
+        (home_for / league_average)
+        * (away_against / league_average)
+        * league_average
+        * home_advantage
+    )
+    lambda_away_recent = (
+        (away_for / league_average)
+        * (home_against / league_average)
+        * league_average
+    )
+    return (
+        float(np.clip(lambda_home_recent, 0.05, 5.0)),
+        float(np.clip(lambda_away_recent, 0.05, 5.0)),
+    )
+
+
 def add_leakage_safe_features(df):
 
     """
@@ -266,6 +299,18 @@ def add_leakage_safe_features(df):
     home_recent_against_15 = np.full(n, np.nan)
     away_recent_for_15 = np.full(n, np.nan)
     away_recent_against_15 = np.full(n, np.nan)
+    lambda_home_recent_5 = np.full(n, np.nan)
+    lambda_away_recent_5 = np.full(n, np.nan)
+    lambda_total_recent_5 = np.full(n, np.nan)
+    p_poisson_recent_5 = np.full(n, 0.5)
+    lambda_home_recent_10 = np.full(n, np.nan)
+    lambda_away_recent_10 = np.full(n, np.nan)
+    lambda_total_recent_10 = np.full(n, np.nan)
+    p_poisson_recent_10 = np.full(n, 0.5)
+    lambda_home_recent_15 = np.full(n, np.nan)
+    lambda_away_recent_15 = np.full(n, np.nan)
+    lambda_total_recent_15 = np.full(n, np.nan)
+    p_poisson_recent_15 = np.full(n, 0.5)
     league_average_feature = np.full(n, np.nan)
     home_advantage_feature = np.full(n, np.nan)
     home_history_count = np.zeros(n, dtype=float)
@@ -450,14 +495,39 @@ def add_leakage_safe_features(df):
             recent_away_for = _recent_average(away_recent, 0, 5, away_for)
             recent_away_against = _recent_average(away_recent, 1, 5, away_against)
 
-            home_recent_for_10[k] = _recent_average(home_recent, 0, 10, home_for)
-            home_recent_against_10[k] = _recent_average(home_recent, 1, 10, home_against)
-            away_recent_for_10[k] = _recent_average(away_recent, 0, 10, away_for)
-            away_recent_against_10[k] = _recent_average(away_recent, 1, 10, away_against)
-            home_recent_for_15[k] = _recent_average(home_recent, 0, 15, home_for)
-            home_recent_against_15[k] = _recent_average(home_recent, 1, 15, home_against)
-            away_recent_for_15[k] = _recent_average(away_recent, 0, 15, away_for)
-            away_recent_against_15[k] = _recent_average(away_recent, 1, 15, away_against)
+            recent_home_for_10 = _recent_average(home_recent, 0, 10, home_for)
+            recent_home_against_10 = _recent_average(home_recent, 1, 10, home_against)
+            recent_away_for_10 = _recent_average(away_recent, 0, 10, away_for)
+            recent_away_against_10 = _recent_average(away_recent, 1, 10, away_against)
+            recent_home_for_15 = _recent_average(home_recent, 0, 15, home_for)
+            recent_home_against_15 = _recent_average(home_recent, 1, 15, home_against)
+            recent_away_for_15 = _recent_average(away_recent, 0, 15, away_for)
+            recent_away_against_15 = _recent_average(away_recent, 1, 15, away_against)
+
+            home_recent_for_10[k] = recent_home_for_10
+            home_recent_against_10[k] = recent_home_against_10
+            away_recent_for_10[k] = recent_away_for_10
+            away_recent_against_10[k] = recent_away_against_10
+            home_recent_for_15[k] = recent_home_for_15
+            home_recent_against_15[k] = recent_home_against_15
+            away_recent_for_15[k] = recent_away_for_15
+            away_recent_against_15[k] = recent_away_against_15
+
+            for window, values in (
+                (5, (recent_home_for, recent_home_against, recent_away_for, recent_away_against)),
+                (10, (recent_home_for_10, recent_home_against_10, recent_away_for_10, recent_away_against_10)),
+                (15, (recent_home_for_15, recent_home_against_15, recent_away_for_15, recent_away_against_15)),
+            ):
+                recent_lambda_h, recent_lambda_a = _recent_expected_goals(
+                    *values,
+                    league_avg,
+                    home_adv,
+                )
+                recent_lambda_total = recent_lambda_h + recent_lambda_a
+                globals()[f"lambda_home_recent_{window}"][k] = recent_lambda_h
+                globals()[f"lambda_away_recent_{window}"][k] = recent_lambda_a
+                globals()[f"lambda_total_recent_{window}"][k] = recent_lambda_total
+                globals()[f"p_poisson_recent_{window}"][k] = poisson.sf(2, recent_lambda_total)
 
             home_for_mean[k] = home_for
             home_against_mean[k] = home_against
@@ -637,6 +707,18 @@ def add_leakage_safe_features(df):
     out["home_recent_against_15"] = home_recent_against_15
     out["away_recent_for_15"] = away_recent_for_15
     out["away_recent_against_15"] = away_recent_against_15
+    out["lambda_home_recent_5"] = lambda_home_recent_5
+    out["lambda_away_recent_5"] = lambda_away_recent_5
+    out["lambda_total_recent_5"] = lambda_total_recent_5
+    out["p_poisson_recent_5"] = np.clip(p_poisson_recent_5, 1e-6, 1 - 1e-6)
+    out["lambda_home_recent_10"] = lambda_home_recent_10
+    out["lambda_away_recent_10"] = lambda_away_recent_10
+    out["lambda_total_recent_10"] = lambda_total_recent_10
+    out["p_poisson_recent_10"] = np.clip(p_poisson_recent_10, 1e-6, 1 - 1e-6)
+    out["lambda_home_recent_15"] = lambda_home_recent_15
+    out["lambda_away_recent_15"] = lambda_away_recent_15
+    out["lambda_total_recent_15"] = lambda_total_recent_15
+    out["p_poisson_recent_15"] = np.clip(p_poisson_recent_15, 1e-6, 1 - 1e-6)
     out["league_average"] = league_average_feature
     out["home_advantage"] = home_advantage_feature
     out["home_history_count"] = home_history_count
@@ -794,6 +876,18 @@ class HistoricalXGModel(BlendModel):
             "home_recent_against_15",
             "away_recent_for_15",
             "away_recent_against_15",
+            "lambda_home_recent_5",
+            "lambda_away_recent_5",
+            "lambda_total_recent_5",
+            "p_poisson_recent_5",
+            "lambda_home_recent_10",
+            "lambda_away_recent_10",
+            "lambda_total_recent_10",
+            "p_poisson_recent_10",
+            "lambda_home_recent_15",
+            "lambda_away_recent_15",
+            "lambda_total_recent_15",
+            "p_poisson_recent_15",
             "league_average",
             "home_advantage",
             "home_history_count",
