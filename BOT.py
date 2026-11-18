@@ -16,6 +16,7 @@ Kullanım:
 
 import sys
 import warnings
+from collections import deque
 import numpy as np
 import pandas as pd
 
@@ -222,10 +223,26 @@ def add_leakage_safe_features(df):
     home_stats = [0.0, 0]
     away_stats = [0.0, 0]
 
+    # Last-five xG history is updated only after all fixtures of a day
+    # have received their predictions.
+    team_recent = {}
+
     p_poisson = np.full(n, 0.5)
 
     lambda_home = np.full(n, np.nan)
     lambda_away = np.full(n, np.nan)
+    home_for_mean = np.full(n, np.nan)
+    home_against_mean = np.full(n, np.nan)
+    away_for_mean = np.full(n, np.nan)
+    away_against_mean = np.full(n, np.nan)
+    home_recent_for = np.full(n, np.nan)
+    home_recent_against = np.full(n, np.nan)
+    away_recent_for = np.full(n, np.nan)
+    away_recent_against = np.full(n, np.nan)
+    league_average_feature = np.full(n, np.nan)
+    home_advantage_feature = np.full(n, np.nan)
+    home_history_count = np.zeros(n, dtype=float)
+    away_history_count = np.zeros(n, dtype=float)
 
     date_groups = pd.Series(
         np.arange(n)
@@ -335,6 +352,36 @@ def add_leakage_safe_features(df):
                 1.35
             )
 
+            home_recent = team_recent.get(home_key, ())
+            away_recent = team_recent.get(away_key, ())
+
+            if home_recent:
+                recent_home_for = float(np.mean([item[0] for item in home_recent]))
+                recent_home_against = float(np.mean([item[1] for item in home_recent]))
+            else:
+                recent_home_for = float(home_for)
+                recent_home_against = float(home_against)
+
+            if away_recent:
+                recent_away_for = float(np.mean([item[0] for item in away_recent]))
+                recent_away_against = float(np.mean([item[1] for item in away_recent]))
+            else:
+                recent_away_for = float(away_for)
+                recent_away_against = float(away_against)
+
+            home_for_mean[k] = home_for
+            home_against_mean[k] = home_against
+            away_for_mean[k] = away_for
+            away_against_mean[k] = away_against
+            home_recent_for[k] = recent_home_for
+            home_recent_against[k] = recent_home_against
+            away_recent_for[k] = recent_away_for
+            away_recent_against[k] = recent_away_against
+            league_average_feature[k] = league_avg
+            home_advantage_feature[k] = home_adv
+            home_history_count[k] = hs[2]
+            away_history_count[k] = aws[2]
+
             lam_h = (
                 (home_for / league_avg)
                 * (away_against / league_avg)
@@ -407,6 +454,16 @@ def add_leakage_safe_features(df):
             aws[1] += hxg
             aws[2] += 1
 
+            team_recent.setdefault(
+                home_key,
+                deque(maxlen=5)
+            ).append((hxg, axg))
+
+            team_recent.setdefault(
+                away_key,
+                deque(maxlen=5)
+            ).append((axg, hxg))
+
             ls = league_stats.setdefault(
                 lg,
                 [0.0, 0]
@@ -432,6 +489,18 @@ def add_leakage_safe_features(df):
 
     out["lambda_home"] = lambda_home
     out["lambda_away"] = lambda_away
+    out["home_for_mean"] = home_for_mean
+    out["home_against_mean"] = home_against_mean
+    out["away_for_mean"] = away_for_mean
+    out["away_against_mean"] = away_against_mean
+    out["home_recent_for"] = home_recent_for
+    out["home_recent_against"] = home_recent_against
+    out["away_recent_for"] = away_recent_for
+    out["away_recent_against"] = away_recent_against
+    out["league_average"] = league_average_feature
+    out["home_advantage"] = home_advantage_feature
+    out["home_history_count"] = home_history_count
+    out["away_history_count"] = away_history_count
 
     return out
 
