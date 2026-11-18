@@ -59,3 +59,18 @@ def test_xgo_matches_join_to_audited_xg18_history():
     assert metadata["history_rows"] == 18509
     assert featured["p_poisson"].between(0.0, 1.0).all()
     assert featured["hist_home_xg_for_avg_5"].notna().any()
+
+
+def test_policy_selection_prefers_hit_rate_when_minimum_sample_is_met():
+    from experiments.comparison import choose_confidence_policy
+
+    y_true = np.array([1] * 25 + [0] * 25 + [0] * 25 + [1] * 25)
+    probability = np.array([0.90] * 25 + [0.10] * 25 + [0.60] * 25 + [0.40] * 25)
+    market_valid = np.ones(100, dtype=bool)
+
+    selected = choose_confidence_policy(y_true, probability, market_valid)
+
+    assert selected is not None
+    assert selected["bets"] == 50
+    assert selected["hit_rate"] == 1.0
+    assert selected["threshold"] >= 0.8
