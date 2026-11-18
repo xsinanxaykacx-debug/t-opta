@@ -25,6 +25,7 @@ from BOT import (  # noqa: E402
     add_leakage_safe_features,
     require_columns,
 )
+from scripts.walk_forward_over_under import RecentPoissonBlendCandidate  # noqa: E402
 
 
 UPCOMING_REQUIRED = ("Date", "League", "HomeTeam", "AwayTeam")
