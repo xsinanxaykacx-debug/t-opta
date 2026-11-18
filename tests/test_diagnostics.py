@@ -38,7 +38,8 @@ def test_odds_buckets_use_actual_decimal_odds_and_keep_sides_separate():
     assert over.loc["1.80-<1.90", "bets"] == 1
     assert over.loc["1.90-<2.00", "bets"] == 1
     assert over.loc["2.00-<2.10", "bets"] == 1
-    assert over.loc["2.10+", "bets"] == 1
+    # The 2.10 boundary and all higher odds belong to the open-ended bucket.
+    assert over.loc["2.10+", "bets"] == 2
 
     assert under.loc["1.30-1.49", "bets"] == 1
     assert under.loc["1.80-<1.90", "bets"] == 1
@@ -47,7 +48,7 @@ def test_odds_buckets_use_actual_decimal_odds_and_keep_sides_separate():
     # Exact boundary values are assigned once, to the bucket starting there.
     assert over.loc["1.60-<1.70", "avg_odds"] == 1.60
     assert over.loc["2.00-<2.10", "avg_odds"] == 2.05
-    assert over.loc["2.10+", "avg_odds"] == 2.12
+    assert np.isclose(over.loc["2.10+", "avg_odds"], 2.11)
 
 
 
