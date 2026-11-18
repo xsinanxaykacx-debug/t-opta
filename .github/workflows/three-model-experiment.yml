@@ -1,0 +1,32 @@
+name: three-model-experiment
+
+on:
+  push:
+    branches:
+      - experiments/three-model-comparison
+  workflow_dispatch:
+
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run unit tests
+        run: python -m pytest
+      - name: Run sealed three-model comparison
+        run: python -m experiments.comparison --data xgo.csv --output results/comparison
+      - name: Upload reproducible reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: three-model-experiment-reports
+          path: results/comparison/
+          if-no-files-found: warn
+          retention-days: 90
