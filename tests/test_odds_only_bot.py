@@ -74,3 +74,30 @@ def test_high_odds_filter_includes_only_selected_side_between_160_and_250():
     p_model = np.array([0.7, 0.7, 0.2, 0.2])
     sides = bot._side_columns(frame, p_model)
     assert sides["eligible"].tolist() == [False, True, True, True]
+
+def test_league_season_diagnostics_are_descriptive_and_flag_small_samples():
+    predictions = pd.DataFrame({
+        "Date": pd.to_datetime([
+            "2025-01-10T12:00:00Z",
+            "2025-08-10T12:00:00Z",
+            "2025-08-11T12:00:00Z",
+        ], utc=True),
+        "League": ["L1", "L1", "L2"],
+        "actual_over25": [1, 0, 1],
+        "p_market_over": [0.55, 0.45, 0.60],
+        "predicted_side": ["OVER", "UNDER", "OVER"],
+        "high_odds_eligible": [True, True, False],
+        "selected_side_odds": [1.8, 2.0, 1.7],
+        "selected_side_won": [True, False, True],
+    })
+    report = bot.segment_diagnostics(predictions)
+    league_seasons = report[report["scope"] == "league_season"]
+    assert set(league_seasons["season"]) == {"2024/2025", "2025/2026"}
+    assert not league_seasons["sample_at_least_50_bets"].any()
+    l1_2425 = league_seasons[
+        (league_seasons["league"] == "L1") &
+        (league_seasons["season"] == "2024/2025")
+    ].iloc[0]
+    assert l1_2425["bets_160_250"] == 1
+    assert np.isclose(l1_2425["roi_pct"], 80.0)
+
