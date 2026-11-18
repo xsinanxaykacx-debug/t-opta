@@ -28,7 +28,7 @@ def feature_engine(tmp_path):
 def test_audit_passes_and_lists_only_prior_completed_sources(feature_engine):
     result = audit_match_features(feature_engine, "5")
     assert result["passed"] is True
-    assert result["source_match_ids"] == ["1", "2", "3", "4"]
+    assert result["source_match_ids"] == ["1", "3", "4"]
     assert "5" not in result["source_match_ids"]
     assert "6" not in result["source_match_ids"]
 
