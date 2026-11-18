@@ -105,7 +105,7 @@ def test_ewma_weights_most_recent_match_more_heavily():
 
 
 def test_upcoming_fixture_features_match_historical_match_features(feature_engine):
-    match = feature_engine.history.get_match("5")
+    match = feature_engine.history._match_index.loc["5"]
     historical = feature_engine.build_features("5")
     upcoming = feature_engine.build_features_for_fixture(
         league=str(match["League"]),
