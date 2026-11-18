@@ -2,6 +2,7 @@ import numpy as np
 
 from scripts.walk_forward_over_under import (
     HistGradientBoostingCandidate,
+    NegativeBinomialCandidate,
     build_odds_provenance_report,
     platt_scale_probabilities,
     build_fold_slices,
@@ -183,3 +184,55 @@ def test_odds_provenance_report_groups_source_files_and_match_status():
     assert np.isclose(by_source.loc["D2 (4).csv", "match_rate"], 0.5)
     assert by_source.loc["D2 (4).csv", "avg_ou_pair_rows"] == 1
     assert by_source.loc["E0.csv", "b365_ou_pair_rows"] == 1
+
+
+
+def test_negative_binomial_candidate_learns_dispersion_from_training_only():
+    import pandas as pd
+
+    goals = np.tile(np.array([0, 0, 1, 1, 5, 6, 0, 5, 1, 6]), 20)
+    train = pd.DataFrame({
+        "lambda_home": np.full(len(goals), 1.25),
+        "lambda_away": np.full(len(goals), 1.25),
+        "FTHG": goals // 2,
+        "FTAG": goals - (goals // 2),
+    })
+    validation = pd.DataFrame({
+        "lambda_home": [1.25, 1.0, 1.5],
+        "lambda_away": [1.25, 1.0, 1.5],
+    })
+
+    model = NegativeBinomialCandidate().fit(train)
+    probabilities = model.predict_proba(validation)
+
+    assert model.alpha > 0.0
+    assert model.alpha <= 2.0
+    assert np.isfinite(probabilities).all()
+    assert ((probabilities > 0.0) & (probabilities < 1.0)).all()
+    assert not any(column.startswith("odds_") for column in train.columns)
+
+
+def test_negative_binomial_candidate_reduces_to_poisson_without_overdispersion():
+    import pandas as pd
+    from scipy.stats import poisson
+
+    goals = np.tile(np.array([1, 2, 2, 3]), 30)
+    train = pd.DataFrame({
+        "lambda_home": np.full(len(goals), 1.0),
+        "lambda_away": np.full(len(goals), 1.0),
+        "FTHG": goals // 2,
+        "FTAG": goals - (goals // 2),
+    })
+    validation = pd.DataFrame({
+        "lambda_home": [1.0, 1.25],
+        "lambda_away": [1.0, 1.25],
+    })
+
+    model = NegativeBinomialCandidate().fit(train)
+    probabilities = model.predict_proba(validation)
+
+    assert model.alpha == 0.0
+    assert np.allclose(
+        probabilities,
+        poisson.sf(2, np.array([2.0, 2.5])),
+    )
