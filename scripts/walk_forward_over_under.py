@@ -511,6 +511,7 @@ def build_prediction_diagnostic_rows(
         "home_recent_for", "away_recent_for",
         "home_recent_for_10", "away_recent_for_10",
         "home_recent_for_15", "away_recent_for_15",
+        "lambda_total_recent_5", "lambda_total_recent_10", "lambda_total_recent_15",
     )
     missing = [column for column in required if column not in validation.columns]
     if missing:
@@ -569,6 +570,15 @@ def build_prediction_diagnostic_rows(
             bins=[-0.001, 2, 5, 8, 12, np.inf],
             labels=["0-2", "3-5", "6-8", "9-12", "13+"],
         ).astype(str)
+        recent_lambda_bands = {
+            window: pd.cut(
+                frame[f"lambda_total_recent_{window}"].to_numpy(dtype=float),
+                bins=[0.0, 2.0, 2.3, 2.6, 2.9, 3.2, 3.6, 4.2, np.inf],
+                labels=["<2.0", "2.0-2.3", "2.3-2.6", "2.6-2.9", "2.9-3.2", "3.2-3.6", "3.6-4.2", "4.2+"],
+                include_lowest=True,
+            ).astype(str)
+            for window in (5, 10, 15)
+        }
 
         for index in np.flatnonzero(valid):
             rows.append({
@@ -592,6 +602,12 @@ def build_prediction_diagnostic_rows(
                 "recent_xg_5": float(frame.iloc[index]["home_recent_for"] + frame.iloc[index]["away_recent_for"]),
                 "recent_xg_10": float(frame.iloc[index]["home_recent_for_10"] + frame.iloc[index]["away_recent_for_10"]),
                 "recent_xg_15": float(frame.iloc[index]["home_recent_for_15"] + frame.iloc[index]["away_recent_for_15"]),
+                "recent_lambda_total_5": float(frame.iloc[index]["lambda_total_recent_5"]),
+                "recent_lambda_total_10": float(frame.iloc[index]["lambda_total_recent_10"]),
+                "recent_lambda_total_15": float(frame.iloc[index]["lambda_total_recent_15"]),
+                "recent_lambda_band_5": str(recent_lambda_bands[5][index]),
+                "recent_lambda_band_10": str(recent_lambda_bands[10][index]),
+                "recent_lambda_band_15": str(recent_lambda_bands[15][index]),
                 "recent_form_delta": float(recent_delta[index]),
                 "recent_form": str(recent_form[index]),
             })
@@ -614,6 +630,9 @@ def aggregate_prediction_diagnostics(predictions: pd.DataFrame) -> pd.DataFrame:
         "TOTAL_LAMBDA": "total_lambda_band",
         "HISTORY_DEPTH": "history_band",
         "RECENT_FORM": "recent_form",
+        "RECENT_LAMBDA_5": "recent_lambda_band_5",
+        "RECENT_LAMBDA_10": "recent_lambda_band_10",
+        "RECENT_LAMBDA_15": "recent_lambda_band_15",
     }
     frames = []
     for dimension, column in dimensions.items():
@@ -654,8 +673,9 @@ def aggregate_prediction_diagnostics(predictions: pd.DataFrame) -> pd.DataFrame:
     pooled["fold"] = 0
     pooled["accuracy"] = pooled["correct"] / pooled["matches"]
     pooled["error_rate"] = 1.0 - pooled["accuracy"]
-    pooled = pooled[detail.columns]
     detail = detail.drop(columns=["confidence_sum", "total_lambda_sum"])
+    pooled = pooled.drop(columns=["confidence_sum", "total_lambda_sum"])
+    pooled = pooled[detail.columns]
     return pd.concat([detail, pooled], ignore_index=True)
 
 def load_development_data(path: str | Path) -> pd.DataFrame:
