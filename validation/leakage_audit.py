@@ -38,17 +38,20 @@ def audit_match_features(feature_engine: Any, match_id: str) -> dict:
                 "warnings": [], "source_match_ids": []}
 
     home, away = str(target["HomeTeam"]), str(target["AwayTeam"])
-    home_history = history_engine.get_team_history(home, cutoff)
-    away_history = history_engine.get_team_history(away, cutoff)
+    league = str(target["League"])
+    home_history = history_engine.get_team_history(home, cutoff, league=league)
+    away_history = history_engine.get_team_history(away, cutoff, league=league)
     home_history = home_history.loc[home_history["TeamSide"].eq("home")]
     away_history = away_history.loc[away_history["TeamSide"].eq("away")]
-    h2h = history_engine.get_match_history(home, away, cutoff)
+    h2h = history_engine.get_match_history(home, away, cutoff, league=league)
     sources = pd.concat([home_history, away_history, h2h], ignore_index=True)
     sources = sources.drop_duplicates("MatchID")
 
     if not sources.empty:
         if not (sources["Date"].dt.normalize() < cutoff.normalize()).all():
             violations.append("A source match is not on a strictly earlier calendar day.")
+        if sources["League"].astype(str).ne(league).any():
+            violations.append("A historical source belongs to a different league.")
         if sources["MatchID"].astype(str).eq(match_id).any():
             violations.append("Target MatchID appears in historical feature sources.")
         if sources[["FTHG", "FTAG"]].isna().any().any():
