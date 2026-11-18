@@ -183,6 +183,13 @@ def market_data(df):
 # 4. GEÇMİŞE DAYALI POISSON ÖZELLİKLERİ
 # ============================================================
 
+def _recent_average(history, value_index: int, window: int, fallback: float) -> float:
+    sample = history[-window:]
+    if not sample:
+        return float(fallback)
+    return float(np.mean([item[value_index] for item in sample]))
+
+
 def add_leakage_safe_features(df):
 
     """
@@ -232,7 +239,7 @@ def add_leakage_safe_features(df):
     home_stats = [0.0, 0]
     away_stats = [0.0, 0]
 
-    # Last-five xG history is updated only after all fixtures of a day
+    # Last-15 xG history is updated only after all fixtures of a day
     # have received their predictions.
     team_recent = {}
 
@@ -251,6 +258,14 @@ def add_leakage_safe_features(df):
     home_recent_against = np.full(n, np.nan)
     away_recent_for = np.full(n, np.nan)
     away_recent_against = np.full(n, np.nan)
+    home_recent_for_10 = np.full(n, np.nan)
+    home_recent_against_10 = np.full(n, np.nan)
+    away_recent_for_10 = np.full(n, np.nan)
+    away_recent_against_10 = np.full(n, np.nan)
+    home_recent_for_15 = np.full(n, np.nan)
+    home_recent_against_15 = np.full(n, np.nan)
+    away_recent_for_15 = np.full(n, np.nan)
+    away_recent_against_15 = np.full(n, np.nan)
     league_average_feature = np.full(n, np.nan)
     home_advantage_feature = np.full(n, np.nan)
     home_history_count = np.zeros(n, dtype=float)
@@ -427,22 +442,22 @@ def add_leakage_safe_features(df):
                 1.35
             )
 
-            home_recent = team_recent.get(home_key, ())
-            away_recent = team_recent.get(away_key, ())
+            home_recent = list(team_recent.get(home_key, ()))
+            away_recent = list(team_recent.get(away_key, ()))
 
-            if home_recent:
-                recent_home_for = float(np.mean([item[0] for item in home_recent]))
-                recent_home_against = float(np.mean([item[1] for item in home_recent]))
-            else:
-                recent_home_for = float(home_for)
-                recent_home_against = float(home_against)
+            recent_home_for = _recent_average(home_recent, 0, 5, home_for)
+            recent_home_against = _recent_average(home_recent, 1, 5, home_against)
+            recent_away_for = _recent_average(away_recent, 0, 5, away_for)
+            recent_away_against = _recent_average(away_recent, 1, 5, away_against)
 
-            if away_recent:
-                recent_away_for = float(np.mean([item[0] for item in away_recent]))
-                recent_away_against = float(np.mean([item[1] for item in away_recent]))
-            else:
-                recent_away_for = float(away_for)
-                recent_away_against = float(away_against)
+            home_recent_for_10[k] = _recent_average(home_recent, 0, 10, home_for)
+            home_recent_against_10[k] = _recent_average(home_recent, 1, 10, home_against)
+            away_recent_for_10[k] = _recent_average(away_recent, 0, 10, away_for)
+            away_recent_against_10[k] = _recent_average(away_recent, 1, 10, away_against)
+            home_recent_for_15[k] = _recent_average(home_recent, 0, 15, home_for)
+            home_recent_against_15[k] = _recent_average(home_recent, 1, 15, home_against)
+            away_recent_for_15[k] = _recent_average(away_recent, 0, 15, away_for)
+            away_recent_against_15[k] = _recent_average(away_recent, 1, 15, away_against)
 
             home_for_mean[k] = home_for
             home_against_mean[k] = home_against
@@ -566,7 +581,7 @@ def add_leakage_safe_features(df):
 
             team_recent.setdefault(
                 home_key,
-                deque(maxlen=5)
+                deque(maxlen=15)
             ).append((hxg, axg))
 
             team_recent.setdefault(
@@ -614,6 +629,14 @@ def add_leakage_safe_features(df):
     out["home_recent_against"] = home_recent_against
     out["away_recent_for"] = away_recent_for
     out["away_recent_against"] = away_recent_against
+    out["home_recent_for_10"] = home_recent_for_10
+    out["home_recent_against_10"] = home_recent_against_10
+    out["away_recent_for_10"] = away_recent_for_10
+    out["away_recent_against_10"] = away_recent_against_10
+    out["home_recent_for_15"] = home_recent_for_15
+    out["home_recent_against_15"] = home_recent_against_15
+    out["away_recent_for_15"] = away_recent_for_15
+    out["away_recent_against_15"] = away_recent_against_15
     out["league_average"] = league_average_feature
     out["home_advantage"] = home_advantage_feature
     out["home_history_count"] = home_history_count
@@ -763,6 +786,14 @@ class HistoricalXGModel(BlendModel):
             "home_recent_against",
             "away_recent_for",
             "away_recent_against",
+            "home_recent_for_10",
+            "home_recent_against_10",
+            "away_recent_for_10",
+            "away_recent_against_10",
+            "home_recent_for_15",
+            "home_recent_against_15",
+            "away_recent_for_15",
+            "away_recent_against_15",
             "league_average",
             "home_advantage",
             "home_history_count",
