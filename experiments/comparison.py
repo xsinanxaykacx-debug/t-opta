@@ -210,7 +210,7 @@ def choose_confidence_policy(
 
     if not candidates:
         return None
-    # Maximise selection coverage on POLICY_SELECT, then hit rate.
+    # Maximise observed hit rate on POLICY_SELECT, then sample size.
     return max(candidates, key=lambda item: (item["hit_rate"], item["bets"]))
 
 
