@@ -267,4 +267,7 @@ def test_fixed_confidence_policy_reports_only_selected_high_confidence_picks():
     assert report["matches"] == 2
     assert report["correct"] == 2
     assert np.isclose(report["accuracy"], 1.0)
+    assert report["top_n"] == 2
+    assert report["top_n_correct"] == 2
+    assert np.isclose(report["top_n_accuracy"], 1.0)
     assert np.isclose(report["coverage"], 0.5)
