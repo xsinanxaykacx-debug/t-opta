@@ -196,7 +196,13 @@ def add_leakage_safe_features(df):
     away = out["AwayTeam"].astype(str).to_numpy()
     league = out["League"].astype(str).to_numpy()
 
-    dates = out["Date"].to_numpy()
+    # All fixtures on the same UTC calendar day must share the same
+    # pre-day history, even when their kickoff timestamps differ.
+    dates = pd.to_datetime(
+        out["Date"],
+        utc=True,
+        errors="raise"
+    ).dt.normalize().to_numpy()
 
     home_xg = out["Home_xG"].to_numpy(dtype=float)
     away_xg = out["Away_xG"].to_numpy(dtype=float)
