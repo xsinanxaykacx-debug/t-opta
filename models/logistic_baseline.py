@@ -41,11 +41,11 @@ class LogisticBaseline:
     def _prepare_features(features):
         if not isinstance(features, pd.DataFrame) or features.empty:
             raise ValueError("features must be a non-empty DataFrame.")
-        forbidden = {"FTHG", "FTAG", "Home_xG", "Away_xG", "MatchID", "match_date"}
+        forbidden = {"FTHG", "FTAG", "Home_xG", "Away_xG"}
         leakage = forbidden.intersection(features.columns)
         if leakage:
-            raise ValueError(f"Target/identity columns are not model features: {sorted(leakage)}")
-        frame = features.copy()
+            raise ValueError(f"Target/outcome columns are not model features: {sorted(leakage)}")
+        frame = features.drop(columns=["MatchID", "match_date"], errors="ignore").copy()
         frame.columns = [str(column) for column in frame.columns]
         if frame.columns.duplicated().any():
             raise ValueError("Feature column names must be unique.")
@@ -121,7 +121,7 @@ class LogisticBaseline:
         y = self._validate_labels(labels)
         if len(frame) != len(y):
             raise ValueError("features and labels length mismatch.")
-        train_idx, valid_idx = self._chronological_indices(frame, self.validation_fraction)
+        train_idx, valid_idx = self._chronological_indices(features, self.validation_fraction)
         if set(np.unique(y[train_idx])) != {0, 1, 2}:
             raise ValueError("Internal chronological training fold must contain all 1X2 classes.")
         if len(np.unique(y[valid_idx])) < 2:
