@@ -50,6 +50,9 @@ EDGE_THRESHOLDS = (0.03, 0.05, 0.08, 0.10)
 MIN_TEAM_HISTORY = 3
 MIN_CALIBRATION_ROWS = 100
 MIN_BETS_FOR_SELECTION = 50
+MIN_POLICY_CHECK_BETS = 50
+MIN_POLICY_CHECK_HIT_RATE = 0.65
+MIN_POLICY_CHECK_ROI = 0.0
 
 RANDOM_SEED = 42
 
@@ -788,6 +791,31 @@ def evaluate(name, df, model):
             "AUC        : hesaplanamadı"
         )
 
+    # Selective accuracy: confidence is max(P(OVER), P(UNDER)).
+    confidence = np.maximum(p, 1.0 - p)
+    for cutoff in (0.60, 0.65, 0.70, 0.75):
+        mask = confidence >= cutoff
+        if mask.any():
+            selective_pred = (p[mask] >= 0.5).astype(int)
+            print(
+                f"Confidence >= {cutoff:.2f}: n={int(mask.sum())}, "
+                f"coverage={mask.mean():.1%}, "
+                f"accuracy={accuracy_score(y[mask], selective_pred):.1%}"
+            )
+
+    # Compare against the de-vigged market on the exact same odds-valid rows.
+    p_market, _, _, market_valid = market_data(df)
+    if market_valid.any():
+        market_y = y[market_valid]
+        market_p = np.clip(p_market[market_valid], 1e-6, 1 - 1e-6)
+        print(
+            f"MARKET BASELINE (same odds rows, n={int(market_valid.sum())}): "
+            f"accuracy={accuracy_score(market_y, market_p >= 0.5):.1%}, "
+            f"logloss={log_loss(market_y, market_p, labels=[0, 1]):.4f}, "
+            f"brier={brier_score_loss(market_y, market_p):.4f}, "
+            f"ECE={expected_calibration_error(market_y, market_p):.4f}"
+        )
+
     print(
         classification_report(
             y,
@@ -1051,6 +1079,20 @@ def select_edge_threshold(results):
     )
 
 
+def policy_check_passes(results):
+    """Keep the final holdout sealed unless the policy survives validation."""
+    if results is None or results.empty:
+        return False
+    row = results.iloc[0]
+    return bool(
+        row["bets"] >= MIN_POLICY_CHECK_BETS
+        and np.isfinite(row["hit"])
+        and np.isfinite(row["roi"])
+        and row["hit"] >= MIN_POLICY_CHECK_HIT_RATE
+        and row["roi"] > MIN_POLICY_CHECK_ROI
+    )
+
+
 # ============================================================
 # 10. ANA AKIŞ
 # ============================================================
@@ -1240,6 +1282,7 @@ def main(path):
         model
     )
 
+    policy_passed = False
     if chosen_threshold is not None:
 
         check_results = value_bet_analysis(
@@ -1250,6 +1293,19 @@ def main(path):
         )
         check_results.to_csv(output_dir / "edge_report_policy_check.csv", index=False)
         save_diagnostics(policy_check, model, "policy_check", output_dir, chosen_threshold)
+        policy_passed = policy_check_passes(check_results)
+        if not policy_passed:
+            print(
+                "\nPOLICY RED: validation must have at least "
+                f"{MIN_POLICY_CHECK_BETS} bets, hit rate >= {MIN_POLICY_CHECK_HIT_RATE:.0%}, "
+                f"and ROI > {MIN_POLICY_CHECK_ROI:.1f}%."
+            )
+
+    # Do not open or score the final holdout until the frozen policy passes.
+    if not policy_passed:
+        print("\nFINAL TEST SEALED — NO BET. Continue development on train/validation only.")
+        print(f"Validation diagnostics saved: {output_dir.resolve()}")
+        return
 
     # --------------------------------------------------------
     # Final test
