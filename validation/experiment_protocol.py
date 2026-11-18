@@ -289,10 +289,12 @@ def validate_split_indices(
 def validate_partition_dates(
     partition_dates: Mapping[str, Sequence[Any]],
 ) -> None:
-    """Validate row order inside each partition and strict date progression
-    between adjacent partitions. Equal timestamps may occur at a row-count boundary;
-    row-index disjointness is enforced separately, and same-day historical
-    features must remain isolated by the feature engine.
+    """Validate nondecreasing dates within and across raw partitions.
+
+    A fixed row-count boundary can divide a timestamp/calendar day. The
+    experiment runner therefore purges the boundary calendar day from the
+    preceding operational stage before fitting, calibration, or policy use.
+    Row-index overlap is independently rejected by validate_split_indices.
     """
     if tuple(partition_dates) != PARTITION_ORDER:
         raise ProtocolError(
