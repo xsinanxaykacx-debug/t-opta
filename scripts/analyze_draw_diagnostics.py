@@ -160,6 +160,38 @@ def coverage_precision_recall_curve(labels, probabilities, target_coverages):
     return rows
 
 
+def league_draw_diagnostics(frame, labels, probabilities, threshold, min_reliable_sample=30):
+    """Report per-league draw prevalence and fixed-global-threshold skill."""
+    if len(frame) != len(labels) or len(labels) != len(probabilities):
+        raise ValueError("League frame, labels, and probabilities must have equal lengths.")
+    if "League" not in frame.columns:
+        raise KeyError("League column is required for league diagnostics.")
+    rows = []
+    aligned = frame.reset_index(drop=True)
+    for league, indexes in aligned.groupby("League", sort=True, dropna=False).groups.items():
+        idx = np.asarray(list(indexes), dtype=int)
+        league_labels = labels[idx]
+        league_probabilities = probabilities[idx]
+        metrics = draw_metrics_at_threshold(league_labels, league_probabilities, threshold)
+        n = len(idx)
+        draw_count = int(np.sum(league_labels == 1))
+        observed_rate = draw_count / n if n else 0.0
+        mean_probability = float(league_probabilities[:, 1].mean()) if n else 0.0
+        rows.append({
+            "league": str(league),
+            "matches": n,
+            "actual_draws": draw_count,
+            "actual_draw_rate": round(observed_rate, 6),
+            "mean_p_draw": round(mean_probability, 6),
+            "probability_minus_base_rate": round(mean_probability - observed_rate, 6),
+            "fixed_global_threshold": round(float(threshold), 8),
+            **metrics,
+            "sample_reliability": "adequate_for_descriptive_review" if n >= min_reliable_sample else "small_sample_caution",
+            "minimum_sample_reference": min_reliable_sample,
+        })
+    return rows
+
+
 def select_threshold(curve):
     """Choose on selection data only; deterministic tie-breaks favor coverage then lower threshold."""
     return max(curve, key=lambda row: (row["draw_f1"], row["coverage"], -row["threshold"]))
@@ -274,6 +306,33 @@ def main():
     y_test = labels_for(test)
     p_test = model.predict_proba(x_test)
 
+    # Freeze one global 30%-coverage cutoff on selection data; never tune per league.
+    league_global_threshold = coverage_precision_recall_curve(
+        y_select, p_select, [0.30]
+    )[0]["threshold"]
+    league_diagnostics = {
+        "purpose": (
+            "Descriptive league heterogeneity analysis. One global threshold is derived "
+            "from the overall selection slice and applied unchanged to every league and "
+            "to confirmation; no league-specific threshold is fitted."
+        ),
+        "threshold_source": "overall threshold-selection slice, target coverage 30%",
+        "threshold": league_global_threshold,
+        "minimum_sample_reference": 30,
+        "test_data_used": False,
+        "selection_slice": league_draw_diagnostics(
+            threshold_select, y_select, p_select, league_global_threshold
+        ),
+        "confirmation_slice": league_draw_diagnostics(
+            threshold_confirm, y_confirm, p_confirm, league_global_threshold
+        ),
+        "interpretation_warning": (
+            "League-level precision/recall are noisy at low sample sizes. Compare "
+            "actual draw rate with mean P(DRAW), and treat precision lift over the "
+            "league base rate as descriptive rather than proof of stable predictive skill."
+        ),
+    }
+
     report = {
         "status": "DIAGNOSTIC_EVALUATED",
         "model_version": model.version,
@@ -286,6 +345,7 @@ def main():
             "threshold_confirmation": {"matches": len(threshold_confirm), "start": str(threshold_confirm["Date"].min().date()), "end": str(threshold_confirm["Date"].max().date())},
         },
         "draw_feature_weights": feature_weight_report(model),
+        "league_draw_heterogeneity_analysis": league_diagnostics,
         "coverage_precision_recall_analysis": {
             "purpose": "Describe precision-recall trade-offs at predeclared coverage targets; no single operating point is promoted as a betting rule.",
             "target_coverages": [0.10, 0.20, 0.30, 0.50],
