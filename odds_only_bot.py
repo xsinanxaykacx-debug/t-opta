@@ -198,6 +198,28 @@ def evaluate_validation(frame: pd.DataFrame, p_model: np.ndarray, output_dir: Pa
         if high_result["bets"] else "\n1.60–2.50 aralığında yön tahmini yok."
     )
 
+    bucket_rows = []
+    bucket_edges = [1.60, 1.80, 2.00, 2.25, 2.50]
+    for lower, upper in zip(bucket_edges[:-1], bucket_edges[1:]):
+        in_bucket = high & (sides["selected_odds"] >= lower) & (
+            sides["selected_odds"] < upper if upper < MAX_ODDS else sides["selected_odds"] <= upper
+        )
+        bucket = _roi_summary(sides["selected_odds"][in_bucket], sides["won"][in_bucket])
+        bucket_rows.append({
+            "odds_band": f"{lower:.2f}-{upper:.2f}",
+            **bucket,
+            "average_odds": float(np.mean(sides["selected_odds"][in_bucket])) if bucket["bets"] else np.nan,
+        })
+        if bucket["bets"]:
+            print(
+                f"Oran {lower:.2f}-{upper:.2f}: n={bucket['bets']}, "
+                f"isabet={bucket['hit_rate']:.2%}, "
+                f"ort.oran={bucket_rows[-1]['average_odds']:.2f}, "
+                f"ROI={bucket['roi_pct']:.2f}%"
+            )
+        else:
+            print(f"Oran {lower:.2f}-{upper:.2f}: maç yok")
+
     rows = []
     for threshold in EV_THRESHOLDS:
         selected = sides["ev_eligible"] & mask & (sides["ev_value"] >= threshold)
@@ -234,6 +256,7 @@ def evaluate_validation(frame: pd.DataFrame, p_model: np.ndarray, output_dir: Pa
     pd.DataFrame([{"strategy": "directional_1.60_to_2.50", **high_result}]).to_csv(
         output_dir / "validation_high_odds_summary.csv", index=False
     )
+    pd.DataFrame(bucket_rows).to_csv(output_dir / "validation_odds_bands.csv", index=False)
 
 
 def load_data(path: Path):
