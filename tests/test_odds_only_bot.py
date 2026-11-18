@@ -73,4 +73,4 @@ def test_high_odds_filter_includes_only_selected_side_between_160_and_250():
     frame = _frame([1.59, 1.8, 2.6, 1.9], [2.4, 1.7, 1.8, 2.2])
     p_model = np.array([0.7, 0.7, 0.2, 0.2])
     sides = bot._side_columns(frame, p_model)
-    assert sides["eligible"].tolist() == [False, True, False, True]
+    assert sides["eligible"].tolist() == [False, True, True, True]
