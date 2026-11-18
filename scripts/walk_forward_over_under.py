@@ -217,7 +217,7 @@ def run_walk_forward(
     csv_path: str | Path,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR,
     thresholds: tuple[float, ...] = (0.03, 0.05, 0.08, 0.10, 0.12, 0.15, 0.20),
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     frame = load_development_data(csv_path)
     frame = add_leakage_safe_features(frame)
     windows = build_fold_slices(len(frame))
@@ -344,6 +344,8 @@ def run_walk_forward(
         _score_row(y_all, np.asarray(oof["model"]), all_mask, "BLEND", 0),
         _score_row(y_all, np.asarray(oof["market"]), all_mask, "MARKET", 0),
         _score_row(y_all, np.asarray(oof["poisson"]), all_mask, "POISSON", 0),
+        _score_row(y_all, np.asarray(oof["poisson_cal"]), all_mask, "POISSON_CAL", 0),
+        _score_row(y_all, np.asarray(oof["xg_logistic"]), all_mask, "XG_LOGISTIC_CAL", 0),
     ])
 
     metrics = pd.DataFrame(metric_rows)
