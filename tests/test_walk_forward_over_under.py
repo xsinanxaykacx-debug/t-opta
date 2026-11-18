@@ -54,6 +54,28 @@ def test_walk_forward_policy_reports_over_under_and_combined_roi():
     assert np.isclose(by_side["ALL"]["roi_pct"], 87.5)
 
 
+def test_confidence_report_measures_selective_accuracy_and_coverage():
+    from scripts.walk_forward_over_under import calculate_confidence_rows
+
+    y = np.array([1, 0, 1, 0], dtype=int)
+    probabilities = np.array([0.90, 0.80, 0.55, 0.45])
+
+    rows = calculate_confidence_rows(
+        y=y,
+        probabilities=probabilities,
+        model_name="BLEND",
+        fold=1,
+        cutoffs=(0.60, 0.80),
+    )
+
+    by_cutoff = {row["confidence_cutoff"]: row for row in rows}
+    assert by_cutoff[0.60]["matches"] == 2
+    assert np.isclose(by_cutoff[0.60]["coverage"], 0.5)
+    assert np.isclose(by_cutoff[0.60]["accuracy"], 1.0)
+    assert by_cutoff[0.80]["matches"] == 2
+    assert np.isclose(by_cutoff[0.80]["mean_confidence"], 0.85)
+
+
 def test_walk_forward_fold_builder_rejects_insufficient_history():
     try:
         build_fold_slices(
