@@ -1,0 +1,53 @@
+name: build-prediction-bot
+
+on:
+  push:
+    branches:
+      - main
+      - experiments/three-model-comparison
+    paths:
+      - "experiments/**"
+      - "modules/**"
+      - "predict.py"
+      - "xg18.csv"
+      - "xgo.csv"
+      - "results/comparison/experiment_summary.json"
+      - "results/comparison/final_test_roi.json"
+      - ".github/workflows/build-prediction-bot.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: build-prediction-bot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Train frozen production model (TRAIN + CALIBRATION only)
+        run: python -m experiments.train_production
+
+      - name: Upload prediction model
+        uses: actions/upload-artifact@v4
+        with:
+          name: t-opta-odds-aware-prediction-model
+          path: |
+            artifacts/odds_aware_model.joblib
+            artifacts/odds_aware_model.json
+          if-no-files-found: error
+          retention-days: 90
