@@ -54,6 +54,7 @@ def add_xg18_historical_features(
             f"Expected {XG18_GIT_BLOB_SHA}, received {actual_history_sha}."
         )
     history = HistoricalEngine(history_file)
+    history_index = history.data.set_index("MatchID", drop=False)
     history_ids = set(history.data["MatchID"].astype(str))
     requested_ids = out["MatchID"].astype(str).tolist()
     missing_ids = [match_id for match_id in requested_ids if match_id not in history_ids]
@@ -63,6 +64,28 @@ def add_xg18_historical_features(
             f"{len(missing_ids)} xgo MatchID values are absent from xg18.csv; "
             f"examples: {preview}"
         )
+
+    matched_history = history_index.loc[requested_ids].reset_index(drop=True)
+
+    for column in ("League", "HomeTeam", "AwayTeam"):
+        source_values = out[column].astype(str).str.strip().str.casefold().reset_index(drop=True)
+        history_values = matched_history[column].astype(str).str.strip().str.casefold().reset_index(drop=True)
+        if not source_values.equals(history_values):
+            mismatch_count = int((source_values != history_values).sum())
+            raise ValueError(
+                f"xgo/xg18 {column} mismatch for {mismatch_count} MatchID rows."
+            )
+
+    for column in ("FTHG", "FTAG", "Home_xG", "Away_xG"):
+        source_values = pd.to_numeric(out[column], errors="coerce").to_numpy(dtype=float)
+        history_values = pd.to_numeric(matched_history[column], errors="coerce").to_numpy(dtype=float)
+        if not np.allclose(source_values, history_values, rtol=0.0, atol=1e-6, equal_nan=True):
+            mismatch_count = int(
+                (~np.isclose(source_values, history_values, rtol=0.0, atol=1e-6, equal_nan=True)).sum()
+            )
+            raise ValueError(
+                f"xgo/xg18 {column} mismatch for {mismatch_count} MatchID rows."
+            )
 
     feature_engine = FeatureEngine(history)
     features = feature_engine.build_dataset(requested_ids)
@@ -141,6 +164,8 @@ def add_xg18_historical_features(
         "history_date_min": history.data["Date"].min().isoformat(),
         "history_date_max": history.data["Date"].max().isoformat(),
         "xgo_match_id_coverage": 1.0,
+        "fixture_identity_verified": True,
+        "target_and_xg_verified": True,
         "historical_feature_count": int(len(historical_columns)),
         "history_rule": "same league; strictly earlier calendar days; same-day matches excluded",
     }
