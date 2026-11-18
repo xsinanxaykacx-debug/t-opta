@@ -206,6 +206,26 @@ def test_primary_historical_model_features_do_not_depend_on_any_odds():
         "home_recent_against": [0.9, 1.0],
         "away_recent_for": [1.0, 1.2],
         "away_recent_against": [1.6, 1.4],
+        "home_recent_for_10": [1.7, 1.9],
+        "home_recent_against_10": [1.0, 1.1],
+        "home_recent_for_15": [1.6, 1.8],
+        "home_recent_against_15": [1.1, 1.2],
+        "away_recent_for_10": [1.7, 1.9],
+        "away_recent_against_10": [1.0, 1.1],
+        "away_recent_for_15": [1.6, 1.8],
+        "away_recent_against_15": [1.1, 1.2],
+        "lambda_home_recent_5": [1.5, 1.7],
+        "lambda_away_recent_5": [1.0, 1.1],
+        "lambda_total_recent_5": [2.5, 2.8],
+        "p_poisson_recent_5": [0.55, 0.65],
+        "lambda_home_recent_10": [1.5, 1.7],
+        "lambda_away_recent_10": [1.0, 1.1],
+        "lambda_total_recent_10": [2.5, 2.8],
+        "p_poisson_recent_10": [0.55, 0.65],
+        "lambda_home_recent_15": [1.5, 1.7],
+        "lambda_away_recent_15": [1.0, 1.1],
+        "lambda_total_recent_15": [2.5, 2.8],
+        "p_poisson_recent_15": [0.55, 0.65],
         "league_average": [2.5, 2.6],
         "home_advantage": [1.1, 1.1],
         "home_history_count": [6.0, 7.0],
@@ -223,7 +243,7 @@ def test_primary_historical_model_features_do_not_depend_on_any_odds():
     expected = HistoricalXGModel._X(historical)
     actual = HistoricalXGModel._X(with_odds)
 
-    assert expected.shape == (2, 15)
+    assert expected.shape == (2, 35)
     assert np.array_equal(actual, expected)
 
 
