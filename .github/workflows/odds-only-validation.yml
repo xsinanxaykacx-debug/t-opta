@@ -1,0 +1,33 @@
+name: Odds-only model validation
+
+on:
+  push:
+    branches: ["feature/odds-only-high-odds-model"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  odds-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run test suite
+        run: pytest -q
+      - name: Run odds-only validation on repository dataset
+        run: python odds_only_bot.py xgo.csv --out results_odds_only
+      - name: Upload validation reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: odds-only-validation-reports
+          path: results_odds_only/
+          if-no-files-found: error
