@@ -58,7 +58,7 @@ def load_dataset(path: Path) -> pd.DataFrame:
             f"Expected {DATASET_GIT_BLOB_SHA}, received {actual_sha}."
         )
 
-    frame = pd.read_csv(path, encoding="latin-1", low_memory=False)
+    frame = pd.read_csv(path, encoding="utf-8-sig", low_memory=False)
     required = [
         "MatchID", "Date", "League", "HomeTeam", "AwayTeam",
         "Home_xG", "Away_xG", "FTHG", "FTAG",
@@ -192,7 +192,7 @@ def choose_confidence_policy(
     confidence = np.maximum(probability, 1.0 - probability)
     candidates: list[dict[str, Any]] = []
 
-    for threshold in np.arange(0.50, 0.951, 0.005):
+    for threshold in np.round(np.arange(0.50, 0.951, 0.005), 3):
         selected = market_valid & (confidence >= threshold)
         count = int(selected.sum())
         if count < MIN_SELECT_BETS:
