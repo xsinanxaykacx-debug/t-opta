@@ -47,6 +47,20 @@
 - No current strategy meets the 65% hit-rate and positive-ROI validation requirements.
 - Current conclusion: NO BET; continue model development using Train/Validation only.
 
+## Additional train-only model experiments (2026-11-18)
+- Internal chronological OOS was carved entirely from Train (not Validation or Final Test): fit 5,936; calibration 748; policy-select 272; policy-check 261; internal OOS 1,278 (1,086 odds-valid).
+- De-vig market raw baseline on internal OOS: 61.05% accuracy, log loss 0.6628, Brier 0.2352, AUC 0.6140.
+- Candidate calibrated models on the same 1,086 odds-valid rows:
+  - Logistic market+Poisson: 57.46% accuracy, log loss 0.6699, Brier 0.2386.
+  - Extended logistic: 56.63%, log loss 0.6733, Brier 0.2398.
+  - HistGradientBoosting: 60.04%, log loss 0.6693, Brier 0.2380.
+  - LightGBM: 58.75%, log loss 0.6716, Brier 0.2393.
+  - XGBoost: 59.85%, log loss 0.6835, Brier 0.2407.
+  - CatBoost: 60.04%, log loss 0.6758, Brier 0.2394.
+- None beat the raw market baseline on the same rows. Edge thresholds with at least 50 bets were negative ROI for all tested candidates; small positive samples were rejected as too small.
+- Market-only confidence strategy was also inconsistent: internal OOS at pmax >= 0.625 had 243 picks, 71.60% hit and +0.32% ROI; Policy Check at >= 0.60 had 69 picks, 65.22% hit but -5.83% ROI. At >= 0.625 Policy Check had only 42 picks and -8.07% ROI.
+- These experiments used Train-only internal splits plus the already-used validation segments. They do not access or score Final Test.
+
 ## Safety gate
 - Final holdout remains sealed unless Policy Check has at least 50 bets, hit rate >= 65%, and ROI > 0%.
 - Do not tune thresholds or features using final holdout outcomes.
