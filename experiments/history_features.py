@@ -15,6 +15,7 @@ from modules.historical_engine import HistoricalEngine
 
 
 XG18_GIT_BLOB_SHA = "ed2213748abb12a1815c11376931b97568c17cf9"
+FEATURE_CONTRACT_VERSION = "xgo-xg18-prior-calendar-day-v1"
 
 
 def git_blob_sha(path: Path) -> str:
@@ -25,22 +26,43 @@ def git_blob_sha(path: Path) -> str:
 
 
 def _add_poisson_features(frame: pd.DataFrame) -> pd.DataFrame:
-    """Derive a leakage-safe Poisson O/U 2.5 probability from history only."""
+    """Reproduce the Poisson feature formula used by the validated experiment.
+
+    EWMA is preferred. When a short history cannot produce an EWMA, the
+    corresponding prior-match average is used before the fixed 1.25 fallback.
+    This exact fallback order is part of FEATURE_CONTRACT_VERSION.
+    """
     out = frame.copy()
 
-    def positive_feature(column: str, fallback: float) -> pd.Series:
-        values = pd.to_numeric(out[column], errors="coerce")
-        return values.where(values > 0, fallback)
+    def positive_feature(column: str, fallback_column: str) -> np.ndarray:
+        primary = pd.to_numeric(out[column], errors="coerce")
+        fallback = pd.to_numeric(out[fallback_column], errors="coerce")
+        values = primary.fillna(fallback).fillna(1.25)
+        return values.clip(lower=0.05, upper=5.0).to_numpy(dtype=float)
 
-    home_for = positive_feature("hist_home_xg_for_ewma_5", 1.25)
-    away_against = positive_feature("hist_away_xg_against_ewma_5", 1.25)
-    away_for = positive_feature("hist_away_xg_for_ewma_5", 1.15)
-    home_against = positive_feature("hist_home_xg_against_ewma_5", 1.15)
+    home_for = positive_feature(
+        "hist_home_xg_for_ewma_5", "hist_home_xg_for_avg_5"
+    )
+    home_against = positive_feature(
+        "hist_home_xg_against_ewma_5", "hist_home_xg_against_avg_5"
+    )
+    away_for = positive_feature(
+        "hist_away_xg_for_ewma_5", "hist_away_xg_for_avg_5"
+    )
+    away_against = positive_feature(
+        "hist_away_xg_against_ewma_5", "hist_away_xg_against_avg_5"
+    )
 
-    out["hist_lambda_home"] = np.sqrt(home_for * away_against) * 1.05
-    out["hist_lambda_away"] = np.sqrt(away_for * home_against) / 1.05
-    total_lambda = (out["hist_lambda_home"] + out["hist_lambda_away"]).clip(0.2, 6.0)
-    out["p_poisson"] = poisson.sf(2, total_lambda)
+    # Fixed, symmetric attack-vs-defence interaction from the validated run.
+    lambda_home = np.clip(np.sqrt(home_for * away_against) * 1.05, 0.05, 5.0)
+    lambda_away = np.clip(np.sqrt(away_for * home_against) / 1.05, 0.05, 5.0)
+    out["hist_lambda_home"] = lambda_home
+    out["hist_lambda_away"] = lambda_away
+    out["p_poisson"] = np.clip(
+        poisson.sf(2, lambda_home + lambda_away),
+        1e-6,
+        1.0 - 1e-6,
+    )
     return out
 
 def add_xg18_historical_features(
