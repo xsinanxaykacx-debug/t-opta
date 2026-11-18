@@ -106,8 +106,8 @@ def add_xg18_historical_features(
     # Symmetric attack-vs-defence interaction with a modest, fixed home factor.
     lambda_home = np.clip(np.sqrt(home_for * away_against) * 1.05, 0.05, 5.0)
     lambda_away = np.clip(np.sqrt(away_for * home_against) / 1.05, 0.05, 5.0)
-    out["lambda_home"] = lambda_home
-    out["lambda_away"] = lambda_away
+    out["hist_lambda_home"] = lambda_home
+    out["hist_lambda_away"] = lambda_away
     out["p_poisson"] = np.clip(
         poisson.sf(2, lambda_home + lambda_away),
         1e-6,
