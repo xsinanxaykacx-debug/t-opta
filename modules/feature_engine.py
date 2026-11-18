@@ -67,7 +67,7 @@ class FeatureEngine:
             f"{prefix}_points_avg_10": self._mean(latest["Points"]),
             f"{prefix}_xg_for_ewma_5": self._ewma(recent5["Team_xG"]),
             f"{prefix}_xg_against_ewma_5": self._ewma(recent5["Opponent_xG"]),
-            f"{prefix}_rest_days": np.nan,
+            f"{prefix}_rest_days": rest_days,
         }
 
     def build_features(self, match_id: str) -> dict:
