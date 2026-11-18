@@ -5,7 +5,7 @@ import numpy as np
 
 
 class EvaluationMetrics:
-    """Calculate proper scoring rules and selective-prediction coverage.
+    """Calculate proper scoring rules, class metrics, calibration, and coverage.
 
     Class order is fixed: 0=home win, 1=draw, 2=away win.
     """
@@ -42,6 +42,70 @@ class EvaluationMetrics:
             raise ValueError("y_true labels must be 0, 1, or 2.")
         one_hot = np.eye(3, dtype=float)[labels]
         return float(np.mean(np.sum((probabilities - one_hot) ** 2, axis=1)))
+
+    @staticmethod
+    def _classification_report(labels, predicted):
+        names = ("HOME", "DRAW", "AWAY")
+        per_class = {}
+        precisions, recalls, f1_scores = [], [], []
+        for class_id, name in enumerate(names):
+            tp = int(np.sum((labels == class_id) & (predicted == class_id)))
+            fp = int(np.sum((labels != class_id) & (predicted == class_id)))
+            fn = int(np.sum((labels == class_id) & (predicted != class_id)))
+            precision = tp / (tp + fp) if tp + fp else 0.0
+            recall = tp / (tp + fn) if tp + fn else 0.0
+            f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+            per_class[name] = {
+                "precision": round(precision, 6),
+                "recall": round(recall, 6),
+                "f1": round(f1, 6),
+                "support": int(np.sum(labels == class_id)),
+            }
+            precisions.append(precision)
+            recalls.append(recall)
+            f1_scores.append(f1)
+        return {
+            "per_class": per_class,
+            "macro_precision": round(float(np.mean(precisions)), 6),
+            "macro_recall": round(float(np.mean(recalls)), 6),
+            "macro_f1": round(float(np.mean(f1_scores)), 6),
+        }
+
+    @staticmethod
+    def _calibration_report(labels, probabilities, bins=10):
+        confidence = probabilities.max(axis=1)
+        predicted = probabilities.argmax(axis=1)
+        correct = (predicted == labels).astype(float)
+        edges = np.linspace(0.0, 1.0, bins + 1)
+        ece = 0.0
+        max_error = 0.0
+        bin_rows = []
+        for index in range(bins):
+            lower, upper = edges[index], edges[index + 1]
+            mask = ((confidence >= lower) & (confidence < upper)
+                    if index < bins - 1 else
+                    (confidence >= lower) & (confidence <= upper))
+            count = int(mask.sum())
+            if not count:
+                continue
+            mean_confidence = float(confidence[mask].mean())
+            accuracy = float(correct[mask].mean())
+            gap = abs(mean_confidence - accuracy)
+            ece += (count / len(labels)) * gap
+            max_error = max(max_error, gap)
+            bin_rows.append({
+                "lower": round(float(lower), 2),
+                "upper": round(float(upper), 2),
+                "count": count,
+                "mean_confidence": round(mean_confidence, 6),
+                "accuracy": round(accuracy, 6),
+            })
+        return {
+            "expected_calibration_error": round(float(ece), 6),
+            "max_calibration_error": round(float(max_error), 6),
+            "bins": bin_rows,
+            "method": "top-label, equal-width bins",
+        }
 
     @classmethod
     def evaluate_predictions(cls, y_true, y_prob, decisions) -> dict:
@@ -87,6 +151,8 @@ class EvaluationMetrics:
                 "brier_score": round(brier, 6),
                 "accuracy": round(accuracy, 6),
             },
+            "classification": cls._classification_report(labels, predicted),
+            "calibration": cls._calibration_report(labels, probabilities),
             "selected_bets_only": {
                 "log_loss": round(selected_log_loss, 6) if selected_log_loss is not None else None,
                 "brier_score": round(selected_brier, 6) if selected_brier is not None else None,
