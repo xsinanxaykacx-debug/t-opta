@@ -94,23 +94,34 @@ class FeatureEngine:
         )
         return features
 
-    def build_features(self, match_id: str) -> dict:
-        """Build one pre-match row; target match outcomes/statistics are never features."""
-        try:
-            match = self.history._match_index.loc[str(match_id)]
-        except KeyError as exc:
-            raise KeyError(f"Unknown MatchID={match_id!r}.") from exc
-        if pd.isna(match["Date"]):
-            raise ValueError(f"MatchID={match_id!r} has no valid kickoff date.")
-        cutoff = match["Date"]
-        home, away = str(match["HomeTeam"]), str(match["AwayTeam"])
+    def build_features_for_fixture(
+        self,
+        league: str,
+        match_date,
+        home_team: str,
+        away_team: str,
+    ) -> dict:
+        """Build leakage-safe features for a fixture not yet present in history."""
+        for name, value in (
+            ("league", league),
+            ("home_team", home_team),
+            ("away_team", away_team),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be a non-empty string.")
+
+        cutoff = pd.to_datetime(match_date, errors="coerce", utc=True)
+        if pd.isna(cutoff):
+            raise ValueError("match_date must be a valid timestamp.")
+
+        league = league.strip()
+        home = home_team.strip()
+        away = away_team.strip()
         features = {
-            "MatchID": str(match_id),
-            "League": str(match["League"]),
-            "Season": str(match["Season"]),
+            "League": league,
             "match_date": cutoff,
         }
-        league = str(match["League"])
+
         home_history = self.history.get_team_history(home, cutoff, league=league)
         away_history = self.history.get_team_history(away, cutoff, league=league)
         features.update(self._team_features(home_history, cutoff, "home", "home"))
@@ -121,6 +132,25 @@ class FeatureEngine:
         features["h2h_matches_available"] = int(len(h2h))
         features["h2h_home_goals_avg"] = self._mean(h2h["TeamGoals"])
         features["h2h_away_goals_avg"] = self._mean(h2h["OpponentGoals"])
+        return features
+
+    def build_features(self, match_id: str) -> dict:
+        """Build one historical pre-match row; target outcomes are never features."""
+        try:
+            match = self.history._match_index.loc[str(match_id)]
+        except KeyError as exc:
+            raise KeyError(f"Unknown MatchID={match_id!r}.") from exc
+        if pd.isna(match["Date"]):
+            raise ValueError(f"MatchID={match_id!r} has no valid kickoff date.")
+
+        features = self.build_features_for_fixture(
+            league=str(match["League"]),
+            match_date=match["Date"],
+            home_team=str(match["HomeTeam"]),
+            away_team=str(match["AwayTeam"]),
+        )
+        features["MatchID"] = str(match_id)
+        features["Season"] = str(match["Season"])
         return features
 
     def build_dataset(self, match_ids=None) -> pd.DataFrame:
