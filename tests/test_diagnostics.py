@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from BOT import HistoricalXGModel, PoissonOnlyModel, market_data
+from BOT import HistoricalXGModel, PoissonOnlyModel, confidence_policy_analysis, market_data
 
 from diagnostics import (
     directional_roi_report,
@@ -240,3 +240,31 @@ def test_primary_poisson_model_is_odds_independent_and_preserves_raw_probabiliti
     assert model.fit(frame) is model
     assert model.calibrate(frame) is model
     assert np.allclose(model.predict_proba(frame), [0.72, 0.31])
+
+
+def test_fixed_confidence_policy_reports_only_selected_high_confidence_picks():
+    class DummyModel:
+        @staticmethod
+        def _y(frame):
+            return frame["y"].to_numpy(dtype=int)
+
+        @staticmethod
+        def predict_proba(frame):
+            return frame["p"].to_numpy(dtype=float)
+
+    frame = pd.DataFrame({
+        "p": [0.80, 0.20, 0.60, 0.40],
+        "y": [1, 0, 1, 1],
+    })
+
+    report = confidence_policy_analysis(
+        frame,
+        DummyModel(),
+        "TEST",
+        cutoff=0.75,
+    )
+
+    assert report["matches"] == 2
+    assert report["correct"] == 2
+    assert np.isclose(report["accuracy"], 1.0)
+    assert np.isclose(report["coverage"], 0.5)
