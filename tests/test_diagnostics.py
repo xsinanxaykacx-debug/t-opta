@@ -198,6 +198,18 @@ def test_primary_historical_model_features_do_not_depend_on_any_odds():
         "lambda_home": [1.4, 1.8],
         "lambda_away": [0.9, 1.2],
         "p_poisson": [0.55, 0.72],
+        "home_for_mean": [1.5, 1.7],
+        "home_against_mean": [1.0, 1.1],
+        "away_for_mean": [1.1, 1.3],
+        "away_against_mean": [1.4, 1.2],
+        "home_recent_for": [1.8, 2.0],
+        "home_recent_against": [0.9, 1.0],
+        "away_recent_for": [1.0, 1.2],
+        "away_recent_against": [1.6, 1.4],
+        "league_average": [2.5, 2.6],
+        "home_advantage": [1.1, 1.1],
+        "home_history_count": [6.0, 7.0],
+        "away_history_count": [6.0, 7.0],
     })
     with_odds = historical.assign(
         **{
@@ -211,5 +223,5 @@ def test_primary_historical_model_features_do_not_depend_on_any_odds():
     expected = HistoricalXGModel._X(historical)
     actual = HistoricalXGModel._X(with_odds)
 
-    assert expected.shape == (2, 3)
+    assert expected.shape == (2, 15)
     assert np.array_equal(actual, expected)
