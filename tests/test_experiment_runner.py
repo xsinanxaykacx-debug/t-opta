@@ -1,6 +1,7 @@
 import pandas as pd
 
 from experiments.comparison import purge_same_calendar_day_boundaries
+from experiments.history_features import add_xg18_historical_features
 from validation.experiment_protocol import PARTITION_ORDER
 
 
@@ -39,3 +40,17 @@ def test_same_calendar_day_rows_are_purged_from_preceding_stage():
             effective[previous]["Date"].dt.normalize().max()
             < effective[current]["Date"].dt.normalize().min()
         )
+
+
+
+def test_xgo_matches_join_to_audited_xg18_history():
+    source = pd.read_csv("xgo.csv", encoding="latin-1", nrows=3)
+    source["Date"] = pd.to_datetime(source["Date"], errors="coerce", utc=True)
+
+    featured, metadata = add_xg18_historical_features(source, "xg18.csv")
+
+    assert len(featured) == 3
+    assert metadata["xgo_match_id_coverage"] == 1.0
+    assert metadata["history_rows"] == 18509
+    assert featured["p_poisson"].between(0.0, 1.0).all()
+    assert featured["hist_home_xg_for_avg_5"].notna().any()
