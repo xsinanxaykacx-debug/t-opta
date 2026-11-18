@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import numpy as np
 import pandas as pd
 
 
@@ -48,6 +49,13 @@ class FeatureEngine:
             }
 
         venue_history = history.loc[history["TeamSide"].eq(venue)].copy()
+        team_goals = pd.to_numeric(venue_history["TeamGoals"], errors="coerce")
+        opponent_goals = pd.to_numeric(venue_history["OpponentGoals"], errors="coerce")
+        venue_history["Points"] = np.select(
+            [team_goals > opponent_goals, team_goals == opponent_goals],
+            [3, 1],
+            default=0,
+        )
         latest = venue_history.head(10)
         recent5 = latest.head(5)
         latest_match_date = history.iloc[0]["Date"]
