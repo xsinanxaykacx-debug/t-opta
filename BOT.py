@@ -1097,14 +1097,22 @@ def policy_check_passes(results):
     )
 
 
-def final_test_is_openable(policy_passed, test_df):
-    """Require a clean validation gate and a holdout strictly after the legacy-scored period."""
-    if not (policy_passed and POLICY_CHECK_CLEAN and FINAL_HOLDOUT_CLEAN):
-        return False
+def final_holdout_is_fresh(test_df):
+    """The fresh holdout must start after the legacy-scored dataset ends."""
     if test_df is None or test_df.empty:
         return False
     legacy_end = pd.Timestamp("2026-03-14", tz="UTC")
     return bool(test_df["Date"].min().floor("D") > legacy_end)
+
+
+def final_test_is_openable(policy_passed, test_df):
+    """Require a clean validation gate and a genuinely fresh final holdout."""
+    return bool(
+        policy_passed
+        and POLICY_CHECK_CLEAN
+        and FINAL_HOLDOUT_CLEAN
+        and final_holdout_is_fresh(test_df)
+    )
 
 
 # ============================================================
@@ -1326,12 +1334,10 @@ def main(path):
 
     if not POLICY_CHECK_CLEAN:
         print("\nPOLICY CHECK NOT CLEAN — obtain a fresh chronological validation slice.")
-    elif not FINAL_HOLDOUT_CLEAN or not final_test_is_openable(policy_passed, test):
+    elif not FINAL_HOLDOUT_CLEAN or not final_holdout_is_fresh(test):
         print("\nFINAL TEST SEALED — current CSV overlaps a legacy-scored period. Supply fresh post-2026-03-14 data.")
     elif not policy_passed:
         print("\nFINAL TEST SEALED — NO BET. Validation policy did not pass.")
-    else:
-        end_turn = None
 
     if not final_test_is_openable(policy_passed, test):
         print(f"Validation diagnostics saved: {output_dir.resolve()}")
