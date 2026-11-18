@@ -1,0 +1,49 @@
+{
+  "experiment_run_id": 44330945792,
+  "experiment_commit": "32abf6b",
+  "ready": true,
+  "target_hit_rate": 0.65,
+  "selected_model_on_policy_select": "odds_aware",
+  "policy_selection": {
+    "odds_aware": {
+      "threshold": 0.735,
+      "bets": 12,
+      "hit_rate": 0.75,
+      "coverage": 0.05405405405405406
+    }
+  },
+  "policy_check": {
+    "odds_aware": {
+      "bets": 23,
+      "hit_rate": 0.782608695652174,
+      "target_met": true
+    }
+  },
+  "final_test": {
+    "odds_aware": {
+      "selective": {
+        "threshold": 0.735,
+        "bets": 450,
+        "hit_rate": 0.66,
+        "coverage": 0.08742957062366427,
+        "minimum_bets_met": true,
+        "target_met": true
+      }
+    }
+  },
+  "historical_source": {
+    "history_git_blob_sha": "ed2213748abb12a1815c11376931b97568c17cf9",
+    "history_rows": 18509,
+    "history_dated_rows": 18505,
+    "history_date_min": "2022-07-15T18:30:00+00:00",
+    "history_date_max": "2026-11-14T20:00:00+00:00",
+    "xgo_match_id_coverage": 1.0,
+    "fixture_identity_verified": true,
+    "pre_final_target_and_xg_verified": true,
+    "pre_final_target_rows_verified": 10000,
+    "history_rule": "same league; strictly earlier calendar days; same-day matches excluded"
+  },
+  "final_test_opened": true,
+  "final_test_evaluated_once": true,
+  "interpretation": "The preselected Odds-Aware model passed the sealed Final Test accuracy gate. This is not evidence of profitability."
+}
