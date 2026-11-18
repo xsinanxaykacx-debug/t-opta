@@ -71,3 +71,26 @@ def test_full_dataset_audit_can_return_lineage_details(feature_engine):
 def test_full_dataset_audit_validates_batch_size(feature_engine):
     with pytest.raises(ValueError):
         audit_feature_dataset(feature_engine, batch_size=0)
+
+
+def test_team_history_is_scoped_to_target_league(tmp_path):
+    rows = [
+        ["1", "L1", "S", "2024-01-01T12:00:00Z", "A", "B", 1, 0, 1.0, 0.5],
+        ["2", "L2", "S", "2024-01-02T12:00:00Z", "A", "C", 4, 0, 4.0, 0.5],
+        ["3", "L1", "S", "2024-01-08T12:00:00Z", "A", "D", 0, 0, 0.7, 0.3],
+    ]
+    frame = pd.DataFrame(
+        rows,
+        columns=[
+            "MatchID", "League", "Season", "Date", "HomeTeam", "AwayTeam",
+            "FTHG", "FTAG", "Home_xG", "Away_xG",
+        ],
+    )
+    path = tmp_path / "league-history.csv"
+    frame.to_csv(path, index=False)
+
+    engine = FeatureEngine(HistoricalEngine(path), windows=(5,))
+    features = engine.build_features("3")
+
+    # The L2 match for a same-named team must not contaminate L1 history.
+    assert features["home_xg_for_avg_5"] == 1.0
