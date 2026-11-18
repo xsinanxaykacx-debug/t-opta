@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from experiments.odds_aware import OddsAwareModel
+from experiments.odds_aware import HISTORICAL_COLUMNS, OddsAwareModel
 
 
 def _frame(n: int = 360) -> pd.DataFrame:
@@ -10,17 +10,19 @@ def _frame(n: int = 360) -> pd.DataFrame:
     over = np.where(index % 2 == 0, 1.75, 2.15)
     under = np.where(index % 2 == 0, 2.15, 1.75)
     target = ((p_poisson + (1 / over) / ((1 / over) + (1 / under))) / 2) >= 0.5
-    return pd.DataFrame(
-        {
-            "p_poisson": p_poisson,
-            "odds_Avg>2.5": over,
-            "odds_Avg<2.5": under,
-            "odds_B365>2.5": over + 0.05,
-            "odds_B365<2.5": under + 0.05,
-            "FTHG": np.where(target, 2, 0),
-            "FTAG": np.where(target, 1, 0),
-        }
-    )
+    data = {
+        "p_poisson": p_poisson,
+        "odds_Avg>2.5": over,
+        "odds_Avg<2.5": under,
+        "odds_B365>2.5": over + 0.05,
+        "odds_B365<2.5": under + 0.05,
+        "FTHG": np.where(target, 2, 0),
+        "FTAG": np.where(target, 1, 0),
+    }
+    for offset, column in enumerate(HISTORICAL_COLUMNS):
+        if column != "p_poisson":
+            data[column] = 0.5 + ((index + offset) % 11) / 10
+    return pd.DataFrame(data)
 
 
 def test_odds_aware_model_fits_calibrates_and_predicts_probabilities():
