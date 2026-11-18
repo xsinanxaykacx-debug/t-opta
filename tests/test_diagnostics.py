@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from BOT import market_data
+from BOT import HistoricalXGModel, market_data
 
 from diagnostics import (
     directional_roi_report,
@@ -191,3 +191,25 @@ def test_market_data_never_falls_back_to_closing_odds():
     assert np.isclose(p_market[0], 0.50)
     assert np.isnan(over[0])
     assert np.isnan(under[0])
+
+
+def test_primary_historical_model_features_do_not_depend_on_any_odds():
+    historical = pd.DataFrame({
+        "lambda_home": [1.4, 1.8],
+        "lambda_away": [0.9, 1.2],
+        "p_poisson": [0.55, 0.72],
+    })
+    with_odds = historical.assign(
+        **{
+            "odds_Avg>2.5": [1.20, 8.00],
+            "odds_Avg<2.5": [9.00, 1.10],
+            "odds_AvgC>2.5": [1.01, 99.0],
+            "odds_AvgC<2.5": [99.0, 1.01],
+        }
+    )
+
+    expected = HistoricalXGModel._X(historical)
+    actual = HistoricalXGModel._X(with_odds)
+
+    assert expected.shape == (2, 3)
+    assert np.array_equal(actual, expected)
