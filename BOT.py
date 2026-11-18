@@ -16,6 +16,7 @@ Kullanım:
 
 import sys
 import warnings
+from pathlib import Path
 import numpy as np
 import pandas as pd
 
@@ -194,7 +195,8 @@ def add_leakage_safe_features(df):
     away = out["AwayTeam"].astype(str).to_numpy()
     league = out["League"].astype(str).to_numpy()
 
-    dates = out["Date"].to_numpy()
+    # Batch by UTC calendar day: no same-day result may enter another fixture's features.
+    dates = out["Date"].dt.floor("D").to_numpy()
 
     home_xg = out["Home_xG"].to_numpy(dtype=float)
     away_xg = out["Away_xG"].to_numpy(dtype=float)
@@ -214,6 +216,7 @@ def add_leakage_safe_features(df):
 
     lambda_home = np.full(n, np.nan)
     lambda_away = np.full(n, np.nan)
+    lambda_total = np.full(n, np.nan)
 
     date_groups = pd.Series(
         np.arange(n)
@@ -346,6 +349,7 @@ def add_leakage_safe_features(df):
 
             lambda_home[k] = lam_h
             lambda_away[k] = lam_a
+            lambda_total[k] = lam_h + lam_a
 
             # Bağımsız Poisson toplamı:
             # P(toplam gol > 2.5) = P(toplam gol >= 3)
@@ -420,6 +424,8 @@ def add_leakage_safe_features(df):
 
     out["lambda_home"] = lambda_home
     out["lambda_away"] = lambda_away
+    out["lambda_total"] = lambda_total
+    out["expected_total_goals"] = lambda_total
 
     return out
 
@@ -588,7 +594,148 @@ def expected_calibration_error(y, p, bins=10):
 
 
 # ============================================================
-# 7. PERFORMANS RAPORU
+# 7. KRONOLOJİK GÜN BAZLI BÖLME VE PİYASA KALİBRASYONU
+# ============================================================
+
+def _nearest_day_cut(day_counts, target_rows, min_index=0):
+    cumulative = day_counts.cumsum().to_numpy(dtype=int)
+    candidates = np.arange(min_index, len(cumulative))
+    if len(candidates) == 0:
+        raise ValueError("Gün bazlı bölme için yeterli tarih yok.")
+    return int(candidates[np.argmin(np.abs(cumulative[candidates] - target_rows))])
+
+
+def chronological_split(df, train_target=N_TRAIN, validation_target=N_VAL):
+    """Train/validation/test sınırlarını UTC günlerini bölmeden seçer."""
+    day_key = df["Date"].dt.floor("D")
+    day_counts = day_key.value_counts(sort=False).sort_index()
+    if len(day_counts) < 3:
+        raise ValueError("Kronolojik bölme için en az üç farklı UTC günü gerekli.")
+
+    train_cut = _nearest_day_cut(day_counts, train_target)
+    validation_cut = _nearest_day_cut(
+        day_counts, train_target + validation_target, min_index=train_cut + 1
+    )
+    days = day_counts.index
+    train_end = days[train_cut]
+    validation_end = days[validation_cut]
+
+    train = df.loc[day_key <= train_end].copy()
+    validation = df.loc[(day_key > train_end) & (day_key <= validation_end)].copy()
+    test = df.loc[day_key > validation_end].copy()
+
+    if min(len(train), len(validation), len(test)) == 0:
+        raise ValueError("Gün bazlı bölme boş bir veri kümesi oluşturdu.")
+    assert train.Date.dt.floor("D").max() < validation.Date.dt.floor("D").min()
+    assert validation.Date.dt.floor("D").max() < test.Date.dt.floor("D").min()
+    return train, validation, test
+
+
+def split_validation_by_day(validation):
+    """Calibration / policy-select / policy-check dilimlerini UTC günlerinde ayırır."""
+    day_key = validation["Date"].dt.floor("D")
+    day_counts = day_key.value_counts(sort=False).sort_index()
+    if len(day_counts) < 3:
+        raise ValueError("Validation içinde üç ayrı UTC günü bulunmalı.")
+
+    cut_60 = _nearest_day_cut(day_counts, len(validation) * 0.60)
+    cut_80 = _nearest_day_cut(day_counts, len(validation) * 0.80, min_index=cut_60 + 1)
+    days = day_counts.index
+    day_60, day_80 = days[cut_60], days[cut_80]
+
+    calibration = validation.loc[day_key <= day_60].copy()
+    policy_select = validation.loc[(day_key > day_60) & (day_key <= day_80)].copy()
+    policy_check = validation.loc[day_key > day_80].copy()
+
+    if min(len(calibration), len(policy_select), len(policy_check)) == 0:
+        raise ValueError("Validation alt bölümlerinden biri boş kaldı.")
+    assert calibration.Date.dt.floor("D").max() < policy_select.Date.dt.floor("D").min()
+    assert policy_select.Date.dt.floor("D").max() < policy_check.Date.dt.floor("D").min()
+    return calibration, policy_select, policy_check
+
+
+def reliability_report(y_true, p_model, p_market, n_bins=10):
+    """Piyasa olasılığı dilimlerinde model/piyasa bias ve gerçekleşen frekansı raporlar."""
+    y = np.asarray(y_true, dtype=float)
+    pm = np.asarray(p_model, dtype=float)
+    pk = np.asarray(p_market, dtype=float)
+    if not (len(y) == len(pm) == len(pk)):
+        raise ValueError("y_true, p_model ve p_market uzunlukları eşit olmalı.")
+    if len(y) == 0:
+        return pd.DataFrame(columns=[
+            "bin_range", "count", "model_prob", "market_prob",
+            "actual_freq", "model_bias", "market_bias", "edge_opportunity"
+        ])
+
+    valid = np.isfinite(y) & np.isfinite(pm) & np.isfinite(pk)
+    y, pm, pk = y[valid], pm[valid], pk[valid]
+    edges = np.linspace(0.0, 1.0, n_bins + 1)
+    bin_index = np.clip(np.digitize(pk, edges, right=False) - 1, 0, n_bins - 1)
+    rows = []
+    for i in range(n_bins):
+        mask = bin_index == i
+        if not mask.any():
+            continue
+        actual = float(y[mask].mean())
+        model_mean = float(pm[mask].mean())
+        market_mean = float(pk[mask].mean())
+        rows.append({
+            "bin_range": f"{edges[i]:.2f}-{edges[i + 1]:.2f}",
+            "count": int(mask.sum()),
+            "model_prob": model_mean,
+            "market_prob": market_mean,
+            "actual_freq": actual,
+            "model_bias": model_mean - actual,
+            "market_bias": market_mean - actual,
+            "edge_opportunity": model_mean - market_mean,
+        })
+    return pd.DataFrame(rows)
+
+
+def save_diagnostics(df, model, label, output_dir, threshold=None):
+    """Odds bulunan maçların reliability ve tahmin denetim dosyalarını üretir."""
+    p_model = model.predict_proba(df)
+    p_market, over_odds, under_odds, market_valid = market_data(df)
+    y = model._y(df)
+    if not market_valid.any():
+        return
+
+    report = reliability_report(y[market_valid], p_model[market_valid], p_market[market_valid])
+    report.to_csv(output_dir / f"{label.lower().replace(' ', '_')}_reliability.csv", index=False)
+    if not report.empty:
+        weights = report["count"].to_numpy(dtype=float)
+        model_ece = expected_calibration_error(y[market_valid], p_model[market_valid])
+        market_ece = expected_calibration_error(y[market_valid], p_market[market_valid])
+        pd.DataFrame([{
+            "n": int(market_valid.sum()),
+            "model_ece": model_ece,
+            "market_ece": market_ece,
+        }]).to_csv(output_dir / f"{label.lower().replace(' ', '_')}_calibration_summary.csv", index=False)
+
+    edge_over = p_model[market_valid] - p_market[market_valid]
+    edge_under = -edge_over
+    selected = np.full(len(edge_over), "PASS", dtype=object)
+    if threshold is not None:
+        selected[edge_over > threshold] = "OVER"
+        selected[edge_under > threshold] = "UNDER"
+
+    predictions = df.loc[market_valid, [
+        "Date", "League", "HomeTeam", "AwayTeam", "FTHG", "FTAG"
+    ]].copy()
+    predictions["actual_over25"] = y[market_valid]
+    predictions["p_market_over"] = p_market[market_valid]
+    predictions["p_model_over"] = p_model[market_valid]
+    predictions["edge_over"] = edge_over
+    predictions["edge_under"] = edge_under
+    predictions["odds_over"] = over_odds[market_valid]
+    predictions["odds_under"] = under_odds[market_valid]
+    predictions["market_margin"] = (1.0 / over_odds[market_valid]) + (1.0 / under_odds[market_valid]) - 1.0
+    predictions["selected_side"] = selected
+    predictions.to_csv(output_dir / f"{label.lower().replace(' ', '_')}_predictions.csv", index=False)
+
+
+# ============================================================
+# 8. PERFORMANS RAPORU
 # ============================================================
 
 def evaluate(name, df, model):
@@ -985,45 +1132,15 @@ def main(path):
 
     df = add_leakage_safe_features(df)
 
-    # --------------------------------------------------------
-    # Kronolojik ana bölme
-    # --------------------------------------------------------
+    # UTC günlerini bölmeden yaklaşık 8.500 / 1.500 / kalan maçlık
+    # kronolojik train / validation / untouched test oluştur.
+    train, validation, test = chronological_split(df)
 
-    train = df.iloc[
-        :N_TRAIN
-    ].copy()
+    # Validation dilimini de aynı gün sızıntısı olmadan üçe ayır.
+    calibration, policy_select, policy_check = split_validation_by_day(validation)
 
-    validation = df.iloc[
-        N_TRAIN:N_TRAIN + N_VAL
-    ].copy()
-
-    test = df.iloc[
-        N_TRAIN + N_VAL:
-    ].copy()
-
-    # --------------------------------------------------------
-    # Onay diliminin üç parçaya ayrılması
-    # --------------------------------------------------------
-
-    n_cal = int(
-        len(validation) * 0.60
-    )
-
-    n_select = int(
-        len(validation) * 0.20
-    )
-
-    calibration = validation.iloc[
-        :n_cal
-    ].copy()
-
-    policy_select = validation.iloc[
-        n_cal:n_cal + n_select
-    ].copy()
-
-    policy_check = validation.iloc[
-        n_cal + n_select:
-    ].copy()
+    output_dir = Path("t_opta_output")
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     print("\n" + "=" * 70)
 
@@ -1089,6 +1206,8 @@ def main(path):
         model,
         "POLICY SELECT"
     )
+    selection_results.to_csv(output_dir / "edge_report_policy_select.csv", index=False)
+    save_diagnostics(policy_select, model, "policy_select", output_dir)
 
     chosen_threshold = select_edge_threshold(
         selection_results
@@ -1123,12 +1242,14 @@ def main(path):
 
     if chosen_threshold is not None:
 
-        value_bet_analysis(
+        check_results = value_bet_analysis(
             policy_check,
             model,
             "POLICY CHECK",
             thresholds=(chosen_threshold,)
         )
+        check_results.to_csv(output_dir / "edge_report_policy_check.csv", index=False)
+        save_diagnostics(policy_check, model, "policy_check", output_dir, chosen_threshold)
 
     # --------------------------------------------------------
     # Final test
@@ -1147,15 +1268,17 @@ def main(path):
         test,
         model
     )
+    save_diagnostics(test, model, "final_test", output_dir, chosen_threshold)
 
     if chosen_threshold is not None:
 
-        value_bet_analysis(
+        final_results = value_bet_analysis(
             test,
             model,
             "FINAL TEST",
             thresholds=(chosen_threshold,)
         )
+        final_results.to_csv(output_dir / "edge_report_final_test.csv", index=False)
 
     else:
 
@@ -1173,6 +1296,14 @@ def main(path):
 
     print(
         "Final test sonuçları model/eşik seçimi için kullanılmamalıdır."
+    )
+    print(f"Raporlar kaydedildi: {output_dir.resolve()}")
+    (output_dir / "feature_audit.txt").write_text(
+        "CURRENT-MATCH Home_xG/Away_xG are not direct model inputs; they update team/league history only after all fixtures in the same UTC day are featured.\n"
+        "FTHG/FTAG are target labels only.\n"
+        "Train, calibration, policy-select, policy-check and final-test boundaries are UTC-day aligned.\n"
+        "Odds source timestamps are not present in the input; pre-kickoff availability cannot be independently verified.\n",
+        encoding="utf-8",
     )
 
 
