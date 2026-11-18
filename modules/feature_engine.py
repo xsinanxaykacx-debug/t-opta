@@ -29,24 +29,29 @@ class FeatureEngine:
         values = values.iloc[::-1]
         return float(values.ewm(span=span, adjust=False).mean().iloc[-1]) if len(values) else math.nan
 
-    def _team_features(self, history: pd.DataFrame, before_date, prefix: str, venue: str) -> dict:
+    def _team_features(
+        self,
+        history: pd.DataFrame,
+        before_date,
+        prefix: str,
+        venue: str,
+    ) -> dict:
+        features = {f"{prefix}_matches_available": 0}
+        for window in self.windows:
+            for metric in (
+                "goals_for_avg",
+                "goals_against_avg",
+                "xg_for_avg",
+                "xg_against_avg",
+                "points_avg",
+            ):
+                features[f"{prefix}_{metric}_{window}"] = math.nan
+        features[f"{prefix}_xg_for_ewma_5"] = math.nan
+        features[f"{prefix}_xg_against_ewma_5"] = math.nan
+        features[f"{prefix}_rest_days"] = math.nan
+
         if history.empty:
-            return {
-                f"{prefix}_matches_available": 0,
-                f"{prefix}_goals_for_avg_5": math.nan,
-                f"{prefix}_goals_against_avg_5": math.nan,
-                f"{prefix}_xg_for_avg_5": math.nan,
-                f"{prefix}_xg_against_avg_5": math.nan,
-                f"{prefix}_points_avg_5": math.nan,
-                f"{prefix}_goals_for_avg_10": math.nan,
-                f"{prefix}_goals_against_avg_10": math.nan,
-                f"{prefix}_xg_for_avg_10": math.nan,
-                f"{prefix}_xg_against_avg_10": math.nan,
-                f"{prefix}_points_avg_10": math.nan,
-                f"{prefix}_xg_for_ewma_5": math.nan,
-                f"{prefix}_xg_against_ewma_5": math.nan,
-                f"{prefix}_rest_days": math.nan,
-            }
+            return features
 
         venue_history = history.loc[history["TeamSide"].eq(venue)].copy()
         team_goals = pd.to_numeric(venue_history["TeamGoals"], errors="coerce")
@@ -56,30 +61,38 @@ class FeatureEngine:
             [3, 1],
             default=0,
         )
-        latest = venue_history.head(10)
-        recent5 = latest.head(5)
+        features[f"{prefix}_matches_available"] = int(len(venue_history))
+
         latest_match_date = history.iloc[0]["Date"]
-        rest_days = (
+        features[f"{prefix}_rest_days"] = (
             pd.Timestamp(before_date).normalize()
             - pd.Timestamp(latest_match_date).normalize()
         ).days
 
-        return {
-            f"{prefix}_matches_available": int(len(venue_history)),
-            f"{prefix}_goals_for_avg_5": self._mean(recent5["TeamGoals"]),
-            f"{prefix}_goals_against_avg_5": self._mean(recent5["OpponentGoals"]),
-            f"{prefix}_xg_for_avg_5": self._mean(recent5["TeamXG"]),
-            f"{prefix}_xg_against_avg_5": self._mean(recent5["OpponentXG"]),
-            f"{prefix}_points_avg_5": self._mean(recent5["Points"]),
-            f"{prefix}_goals_for_avg_10": self._mean(latest["TeamGoals"]),
-            f"{prefix}_goals_against_avg_10": self._mean(latest["OpponentGoals"]),
-            f"{prefix}_xg_for_avg_10": self._mean(latest["TeamXG"]),
-            f"{prefix}_xg_against_avg_10": self._mean(latest["OpponentXG"]),
-            f"{prefix}_points_avg_10": self._mean(latest["Points"]),
-            f"{prefix}_xg_for_ewma_5": self._ewma(recent5["TeamXG"]),
-            f"{prefix}_xg_against_ewma_5": self._ewma(recent5["OpponentXG"]),
-            f"{prefix}_rest_days": rest_days,
-        }
+        for window in self.windows:
+            recent = venue_history.head(window)
+            features[f"{prefix}_goals_for_avg_{window}"] = self._mean(
+                recent["TeamGoals"]
+            )
+            features[f"{prefix}_goals_against_avg_{window}"] = self._mean(
+                recent["OpponentGoals"]
+            )
+            features[f"{prefix}_xg_for_avg_{window}"] = self._mean(
+                recent["TeamXG"]
+            )
+            features[f"{prefix}_xg_against_avg_{window}"] = self._mean(
+                recent["OpponentXG"]
+            )
+            features[f"{prefix}_points_avg_{window}"] = self._mean(
+                recent["Points"]
+            )
+
+        recent5 = venue_history.head(5)
+        features[f"{prefix}_xg_for_ewma_5"] = self._ewma(recent5["TeamXG"])
+        features[f"{prefix}_xg_against_ewma_5"] = self._ewma(
+            recent5["OpponentXG"]
+        )
+        return features
 
     def build_features(self, match_id: str) -> dict:
         """Build one pre-match row; target match outcomes/statistics are never features."""
