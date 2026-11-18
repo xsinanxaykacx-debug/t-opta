@@ -24,7 +24,6 @@ from BOT import (  # noqa: E402
     N_TRAIN,
     BlendModel,
     HistoricalXGModel,
-    BlendModel,
     add_leakage_safe_features,
     market_data,
     require_columns,
