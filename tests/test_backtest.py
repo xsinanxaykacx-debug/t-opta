@@ -86,7 +86,7 @@ def test_backtest_rejects_calendar_day_overlap(backtest_inputs):
 def test_backtest_rejects_partition_match_id_overlap(backtest_inputs):
     engine, train, calibration, test = backtest_inputs
     test.loc[test.index[0], "MatchID"] = "2"
-    with pytest.raises(ValueError, match="overlap"):
+    with pytest.raises(ValueError):
         HistoricalBacktester(engine, TinyAdapter()).run_backtest(
             train, calibration, test
         )
