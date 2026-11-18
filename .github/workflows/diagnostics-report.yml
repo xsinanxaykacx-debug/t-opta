@@ -12,6 +12,8 @@ on:
       - "requirements.txt"
       - "tests/test_diagnostics.py"
       - "scripts/walk_forward_over_under.py"
+      - "scripts/predict_upcoming.py"
+      - "tests/test_predict_upcoming.py"
       - "tests/test_walk_forward_over_under.py"
       - "xgo.csv"
       - ".github/workflows/diagnostics-report.yml"
@@ -48,6 +50,9 @@ jobs:
 
       - name: Run expanding walk-forward research on TRAIN history only
         run: python scripts/walk_forward_over_under.py xgo.csv
+
+      - name: Validate upcoming prediction CLI
+        run: python scripts/predict_upcoming.py --help
 
       - name: Verify diagnostic reports
         run: |
