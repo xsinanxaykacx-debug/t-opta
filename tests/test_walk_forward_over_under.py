@@ -236,3 +236,80 @@ def test_negative_binomial_candidate_reduces_to_poisson_without_overdispersion()
         probabilities,
         poisson.sf(2, np.array([2.0, 2.5])),
     )
+
+
+def test_prediction_diagnostics_keep_out_of_fold_rows_and_group_error_sources():
+    import pandas as pd
+    from scripts.walk_forward_over_under import (
+        aggregate_prediction_diagnostics,
+        build_prediction_diagnostic_rows,
+    )
+
+    validation = pd.DataFrame({
+        "Date": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03"]),
+        "League": ["L1", "L1", "L2"],
+        "HomeTeam": ["A", "B", "C"],
+        "AwayTeam": ["D", "E", "F"],
+        "lambda_home": [1.4, 1.0, 1.8],
+        "lambda_away": [1.2, 1.1, 1.5],
+        "home_history_count": [10, 4, 15],
+        "away_history_count": [12, 3, 16],
+        "home_for_mean": [1.4, 1.0, 1.8],
+        "away_for_mean": [1.2, 1.1, 1.5],
+        "home_recent_for": [1.6, 0.7, 1.9],
+        "away_recent_for": [1.3, 0.9, 1.6],
+    })
+    labels = np.array([1, 0, 1], dtype=int)
+    probabilities = np.array([0.82, 0.25, 0.61])
+
+    rows = build_prediction_diagnostic_rows(
+        validation,
+        labels,
+        {"TEST_MODEL": probabilities},
+        fold=2,
+    )
+    raw = pd.DataFrame(rows)
+    report = aggregate_prediction_diagnostics(raw)
+
+    assert len(raw) == 3
+    assert set(raw["fold"]) == {2}
+    assert raw["correct"].tolist() == [1, 1, 1]
+    assert {"LEAGUE", "SIDE", "CONFIDENCE", "TOTAL_LAMBDA", "HISTORY_DEPTH", "RECENT_FORM"} == set(report["dimension"])
+    pooled_league = report.loc[
+        (report["fold"] == 0)
+        & (report["dimension"] == "LEAGUE")
+    ]
+    assert pooled_league["matches"].sum() == 3
+    assert np.isclose(pooled_league["accuracy"].mean(), 1.0)
+
+
+def test_prediction_diagnostics_reject_misaligned_labels():
+    import pandas as pd
+    from scripts.walk_forward_over_under import build_prediction_diagnostic_rows
+
+    validation = pd.DataFrame({
+        "Date": pd.to_datetime(["2024-01-01"]),
+        "League": ["L1"],
+        "HomeTeam": ["A"],
+        "AwayTeam": ["B"],
+        "lambda_home": [1.2],
+        "lambda_away": [1.1],
+        "home_history_count": [5],
+        "away_history_count": [5],
+        "home_for_mean": [1.2],
+        "away_for_mean": [1.1],
+        "home_recent_for": [1.2],
+        "away_recent_for": [1.1],
+    })
+
+    try:
+        build_prediction_diagnostic_rows(
+            validation,
+            np.array([1, 0]),
+            {"TEST_MODEL": np.array([0.7, 0.2])},
+            fold=1,
+        )
+    except ValueError as exc:
+        assert "aligned validation rows" in str(exc)
+    else:
+        raise AssertionError("Expected misaligned labels to be rejected.")
