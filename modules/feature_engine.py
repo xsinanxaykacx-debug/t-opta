@@ -25,44 +25,51 @@ class FeatureEngine:
         values = pd.to_numeric(series, errors="coerce").dropna()
         return float(values.ewm(span=span, adjust=False).mean().iloc[-1]) if len(values) else math.nan
 
-    def _team_features(
-        self,
-        team: str,
-        before_date,
-        prefix: str,
-        venue: str,
-        league: str,
-    ) -> dict:
-        history = self.history.get_team_history(team, before_date, league=league)
-        if venue in {"home", "away"}:
-            history = history.loc[history["TeamSide"].eq(venue)]
-        history = history.sort_values("Date", ascending=False, kind="stable")
-        features = {f"{prefix}_matches_available": int(len(history))}
-        for window in self.windows:
-            recent = history.head(window)
-            points = (
-                (recent["TeamGoals"] > recent["OpponentGoals"]).astype(float) * 3
-                + (recent["TeamGoals"] == recent["OpponentGoals"]).astype(float)
-            )
-            features.update({
-                f"{prefix}_goals_for_avg_{window}": self._mean(recent["TeamGoals"]),
-                f"{prefix}_goals_against_avg_{window}": self._mean(recent["OpponentGoals"]),
-                f"{prefix}_xg_for_avg_{window}": self._mean(recent["TeamXG"]),
-                f"{prefix}_xg_against_avg_{window}": self._mean(recent["OpponentXG"]),
-                f"{prefix}_points_avg_{window}": self._mean(points),
-            })
-        chronological = history.sort_values("Date", kind="stable")
-        features[f"{prefix}_xg_for_ewma_5"] = self._ewma(chronological["TeamXG"], 5)
-        features[f"{prefix}_xg_against_ewma_5"] = self._ewma(chronological["OpponentXG"], 5)
-        if len(history):
-            latest = history["Date"].max()
-            target = self.history._utc_timestamp(before_date)
-            features[f"{prefix}_rest_days"] = float(
-                (target - latest).total_seconds() / 86400
-            )
-        else:
-            features[f"{prefix}_rest_days"] = math.nan
-        return features
+    def _team_features(self, history: pd.DataFrame, prefix: str, venue: str) -> dict:
+        if history.empty:
+            return {
+                f"{prefix}_matches_available": 0,
+                f"{prefix}_goals_for_avg_5": np.nan,
+                f"{prefix}_goals_against_avg_5": np.nan,
+                f"{prefix}_xg_for_avg_5": np.nan,
+                f"{prefix}_xg_against_avg_5": np.nan,
+                f"{prefix}_points_avg_5": np.nan,
+                f"{prefix}_goals_for_avg_10": np.nan,
+                f"{prefix}_goals_against_avg_10": np.nan,
+                f"{prefix}_xg_for_avg_10": np.nan,
+                f"{prefix}_xg_against_avg_10": np.nan,
+                f"{prefix}_points_avg_10": np.nan,
+                f"{prefix}_xg_for_ewma_5": np.nan,
+                f"{prefix}_xg_against_ewma_5": np.nan,
+                f"{prefix}_rest_days": np.nan,
+            }
+
+        venue_history = history.loc[history["TeamSide"].eq(venue)].copy()
+        latest = venue_history.head(10)
+        recent5 = latest.head(5)
+        latest_match_date = history["Date"].max()
+        rest_days = (
+            (pd.Timestamp(history.index.name) - latest_match_date).days
+            if history.index.name is not None
+            else np.nan
+        )
+
+        return {
+            f"{prefix}_matches_available": int(len(venue_history)),
+            f"{prefix}_goals_for_avg_5": self._mean(recent5["TeamGoals"]),
+            f"{prefix}_goals_against_avg_5": self._mean(recent5["OpponentGoals"]),
+            f"{prefix}_xg_for_avg_5": self._mean(recent5["Team_xG"]),
+            f"{prefix}_xg_against_avg_5": self._mean(recent5["Opponent_xG"]),
+            f"{prefix}_points_avg_5": self._mean(recent5["Points"]),
+            f"{prefix}_goals_for_avg_10": self._mean(latest["TeamGoals"]),
+            f"{prefix}_goals_against_avg_10": self._mean(latest["OpponentGoals"]),
+            f"{prefix}_xg_for_avg_10": self._mean(latest["Team_xG"]),
+            f"{prefix}_xg_against_avg_10": self._mean(latest["Opponent_xG"]),
+            f"{prefix}_points_avg_10": self._mean(latest["Points"]),
+            f"{prefix}_xg_for_ewma_5": self._ewma(recent5["Team_xG"]),
+            f"{prefix}_xg_against_ewma_5": self._ewma(recent5["Opponent_xG"]),
+            f"{prefix}_rest_days": np.nan,
+        }
 
     def build_features(self, match_id: str) -> dict:
         """Build one pre-match row; target match outcomes/statistics are never features."""
@@ -81,9 +88,13 @@ class FeatureEngine:
             "match_date": cutoff,
         }
         league = str(match["League"])
-        features.update(self._team_features(home, cutoff, "home", "home", league))
-        features.update(self._team_features(away, cutoff, "away", "away", league))
-        h2h = self.history.get_match_history(home, away, cutoff, league=league)
+        home_history = self.history.get_team_history(home, cutoff, league=league)
+        away_history = self.history.get_team_history(away, cutoff, league=league)
+        features.update(self._team_features(home_history, "home", "home"))
+        features.update(self._team_features(away_history, "away", "away"))
+        h2h = home_history.loc[
+            home_history["Opponent"].astype(str).str.casefold().eq(away.casefold())
+        ].copy()
         features["h2h_matches_available"] = int(len(h2h))
         features["h2h_home_goals_avg"] = self._mean(h2h["TeamGoals"])
         features["h2h_away_goals_avg"] = self._mean(h2h["OpponentGoals"])
