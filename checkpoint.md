@@ -96,3 +96,12 @@
 - Critical limitation: the source CSV has no odds capture timestamps. Avg/B365 fields cannot yet be independently proven to have been captured before kickoff. The script prints this warning and must not be described as verified pre-match until the data provenance is confirmed.
 - Execution status: source and tests committed to branch; full repository pytest / real-data validation pending CI and dataset availability. No accuracy or profitability claim is made yet.
 - Branch: `feature/odds-only-high-odds-model`.
+
+## League / season diagnostics — 2026-11-18
+- Added validation-only descriptive breakdowns by league, season, and league-season in `validation_league_season_diagnostics.csv`.
+- Football season boundaries use July 1: dates from July onward are assigned to the season starting in that calendar year; earlier dates are assigned to the season starting in the prior year.
+- Each segment reports model directional accuracy, market directional accuracy, number of selected-side bets in 1.60–2.50, wins, hit rate, average odds, average per-bet break-even rate, and exact per-bet ROI.
+- Segments with fewer than 50 eligible bets are explicitly flagged as insufficient sample; no league/season is selected or tuned from these descriptive results.
+- Added a unit test for season boundaries, league-season grouping, small-sample flagging, and exact ROI.
+- CI was observed installing dependencies and entering pytest; the real-data validation/artifacts are not yet confirmed. New commits will trigger a fresh run.
+- This remains development validation only. Final holdout remains sealed, and no performance claim is made.
