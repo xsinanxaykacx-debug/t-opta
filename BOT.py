@@ -1097,9 +1097,14 @@ def policy_check_passes(results):
     )
 
 
-def final_test_is_openable(policy_passed):
-    """Require both a clean validation gate and a genuinely fresh final holdout."""
-    return bool(policy_passed and POLICY_CHECK_CLEAN and FINAL_HOLDOUT_CLEAN)
+def final_test_is_openable(policy_passed, test_df):
+    """Require a clean validation gate and a holdout strictly after the legacy-scored period."""
+    if not (policy_passed and POLICY_CHECK_CLEAN and FINAL_HOLDOUT_CLEAN):
+        return False
+    if test_df is None or test_df.empty:
+        return False
+    legacy_end = pd.Timestamp("2026-03-14", tz="UTC")
+    return bool(test_df["Date"].min().floor("D") > legacy_end)
 
 
 # ============================================================
@@ -1319,21 +1324,16 @@ def main(path):
                 f"and ROI > {MIN_POLICY_CHECK_ROI:.1f}%."
             )
 
-    # The validation check was explored during research and is no longer an untouched gate.
     if not POLICY_CHECK_CLEAN:
         print("\nPOLICY CHECK NOT CLEAN — obtain a fresh chronological validation slice.")
-        print(f"Validation diagnostics saved: {output_dir.resolve()}")
-        return
+    elif not FINAL_HOLDOUT_CLEAN or not final_test_is_openable(policy_passed, test):
+        print("\nFINAL TEST SEALED — current CSV overlaps a legacy-scored period. Supply fresh post-2026-03-14 data.")
+    elif not policy_passed:
+        print("\nFINAL TEST SEALED — NO BET. Validation policy did not pass.")
+    else:
+        end_turn = None
 
-    # The legacy script previously scored an overlapping period in this CSV.
-    if not FINAL_HOLDOUT_CLEAN:
-        print("\nFINAL TEST SEALED — current CSV overlaps a legacy scored period. Supply fresh post-2026-03-14 data.")
-        print(f"Validation diagnostics saved: {output_dir.resolve()}")
-        return
-
-    # Do not open or score the final holdout until the frozen policy passes.
-    if not policy_passed:
-        print("\nFINAL TEST SEALED — NO BET. Continue development on train/validation only.")
+    if not final_test_is_openable(policy_passed, test):
         print(f"Validation diagnostics saved: {output_dir.resolve()}")
         return
 
