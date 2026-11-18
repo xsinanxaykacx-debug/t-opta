@@ -102,3 +102,21 @@ def test_ewma_weights_most_recent_match_more_heavily():
     value = FeatureEngine._ewma(pd.Series([5.0, 1.0]), span=2)
     expected = pd.Series([1.0, 5.0]).ewm(span=2, adjust=False).mean().iloc[-1]
     assert value == expected
+
+
+def test_upcoming_fixture_features_match_historical_match_features(feature_engine):
+    match = feature_engine.history.get_match("5")
+    historical = feature_engine.build_features("5")
+    upcoming = feature_engine.build_features_for_fixture(
+        league=str(match["League"]),
+        match_date=match["Date"],
+        home_team=str(match["HomeTeam"]),
+        away_team=str(match["AwayTeam"]),
+    )
+
+    for key, value in upcoming.items():
+        actual = historical[key]
+        if pd.isna(value):
+            assert pd.isna(actual)
+        else:
+            assert actual == value
