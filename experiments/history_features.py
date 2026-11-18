@@ -142,6 +142,6 @@ def add_xg18_historical_features(
         "history_date_max": history.data["Date"].max().isoformat(),
         "xgo_match_id_coverage": 1.0,
         "historical_feature_count": int(len(historical_columns)),
-        "history_rule": "strictly earlier calendar days; same-day matches excluded",
+        "history_rule": "same league; strictly earlier calendar days; same-day matches excluded",
     }
     return out, metadata
