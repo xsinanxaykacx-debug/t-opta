@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from sklearn.isotonic import IsotonicRegression
 from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -148,6 +149,96 @@ def _score_row(
     }
 
 
+
+def platt_scale_probabilities(
+    calibration_probabilities: np.ndarray,
+    calibration_labels: np.ndarray,
+    target_probabilities: np.ndarray,
+) -> np.ndarray:
+    """Fit one-dimensional Platt scaling on a separate chronological calibration set."""
+    calibration_probabilities = np.clip(
+        np.asarray(calibration_probabilities, dtype=float), 1e-6, 1.0 - 1e-6
+    )
+    target_probabilities = np.clip(
+        np.asarray(target_probabilities, dtype=float), 1e-6, 1.0 - 1e-6
+    )
+    labels = np.asarray(calibration_labels, dtype=int)
+    if len(calibration_probabilities) != len(labels):
+        raise ValueError("Calibration probabilities and labels must have equal length.")
+    if np.unique(labels).size != 2:
+        raise ValueError("Platt calibration requires both outcome classes.")
+
+    calibration_logits = np.log(
+        calibration_probabilities / (1.0 - calibration_probabilities)
+    ).reshape(-1, 1)
+    target_logits = np.log(
+        target_probabilities / (1.0 - target_probabilities)
+    ).reshape(-1, 1)
+
+    calibrator = LogisticRegression(
+        C=1.0,
+        max_iter=1000,
+        random_state=42,
+    )
+    calibrator.fit(calibration_logits, labels)
+    return np.clip(
+        calibrator.predict_proba(target_logits)[:, 1],
+        1e-6,
+        1.0 - 1e-6,
+    )
+
+
+def build_odds_provenance_report(frame: pd.DataFrame) -> pd.DataFrame:
+    """Summarize source-file and match-status metadata without using odds as features."""
+    required = ("odds_source_file", "odds_match_status", "League", "Date")
+    missing = [column for column in required if column not in frame.columns]
+    if missing:
+        return pd.DataFrame([{
+            "odds_source_file": "MISSING_METADATA",
+            "matches": int(len(frame)),
+            "matched_rows": 0,
+            "match_rate": np.nan,
+            "leagues": "",
+            "first_date": "",
+            "last_date": "",
+            "avg_ou_pair_rows": 0,
+            "b365_ou_pair_rows": 0,
+        }])
+
+    work = frame.loc[:, list(required)].copy()
+    work["odds_source_file"] = work["odds_source_file"].fillna("MISSING").astype(str)
+    work["odds_match_status"] = work["odds_match_status"].fillna("MISSING").astype(str)
+    work["Date"] = pd.to_datetime(work["Date"], utc=True, errors="coerce")
+
+    avg_pair = (
+        pd.to_numeric(frame.get("odds_Avg>2.5", np.nan), errors="coerce").notna()
+        & pd.to_numeric(frame.get("odds_Avg<2.5", np.nan), errors="coerce").notna()
+    ) if "odds_Avg>2.5" in frame and "odds_Avg<2.5" in frame else np.zeros(len(frame), dtype=bool)
+    b365_pair = (
+        pd.to_numeric(frame.get("odds_B365>2.5", np.nan), errors="coerce").notna()
+        & pd.to_numeric(frame.get("odds_B365<2.5", np.nan), errors="coerce").notna()
+    ) if "odds_B365>2.5" in frame and "odds_B365<2.5" in frame else np.zeros(len(frame), dtype=bool)
+    work["avg_ou_pair"] = np.asarray(avg_pair, dtype=bool)
+    work["b365_ou_pair"] = np.asarray(b365_pair, dtype=bool)
+
+    rows = []
+    for source_file, group in work.groupby("odds_source_file", sort=True):
+        matched = group["odds_match_status"].str.lower().eq("matched")
+        valid_dates = group["Date"].dropna()
+        rows.append({
+            "odds_source_file": source_file,
+            "matches": int(len(group)),
+            "matched_rows": int(matched.sum()),
+            "match_rate": float(matched.mean()) if len(group) else np.nan,
+            "leagues": ";".join(sorted(group["League"].dropna().astype(str).unique())),
+            "first_date": valid_dates.min().isoformat() if len(valid_dates) else "",
+            "last_date": valid_dates.max().isoformat() if len(valid_dates) else "",
+            "avg_ou_pair_rows": int(group["avg_ou_pair"].sum()),
+            "b365_ou_pair_rows": int(group["b365_ou_pair"].sum()),
+        })
+    return pd.DataFrame(rows)
+
+
 def calculate_policy_rows(
     y: np.ndarray,
     p_model: np.ndarray,
@@ -230,6 +321,10 @@ def calculate_confidence_rows(
         top_indices = selected_indices[selected_order[:10]]
         top_n = int(len(top_indices))
         top_n_correct = int((predicted[top_indices] == y[top_indices]).sum())
+        over_selected = selected & (predicted == 1)
+        under_selected = selected & (predicted == 0)
+        top_over = top_indices[predicted[top_indices] == 1]
+        top_under = top_indices[predicted[top_indices] == 0]
         rows.append({
             "fold": fold,
             "model": model_name,
@@ -242,6 +337,16 @@ def calculate_confidence_rows(
             "top_n_matches": top_n,
             "top_n_correct": top_n_correct,
             "top_n_accuracy": float(top_n_correct / top_n) if top_n else np.nan,
+            "over_matches": int(over_selected.sum()),
+            "over_correct": int((predicted[over_selected] == y[over_selected]).sum()),
+            "over_accuracy": float((predicted[over_selected] == y[over_selected]).mean()) if over_selected.any() else np.nan,
+            "under_matches": int(under_selected.sum()),
+            "under_correct": int((predicted[under_selected] == y[under_selected]).sum()),
+            "under_accuracy": float((predicted[under_selected] == y[under_selected]).mean()) if under_selected.any() else np.nan,
+            "top_n_over": int(len(top_over)),
+            "top_n_over_correct": int((predicted[top_over] == y[top_over]).sum()),
+            "top_n_under": int(len(top_under)),
+            "top_n_under_correct": int((predicted[top_under] == y[top_under]).sum()),
         })
     return rows
 
@@ -281,6 +386,7 @@ def run_walk_forward(
     thresholds: tuple[float, ...] = (0.03, 0.05, 0.08, 0.10, 0.12, 0.15, 0.20),
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     frame = load_development_data(csv_path)
+    odds_provenance = build_odds_provenance_report(frame)
     frame = add_leakage_safe_features(frame)
     windows = build_fold_slices(len(frame))
 
@@ -289,10 +395,10 @@ def run_walk_forward(
     confidence_rows = []
     oof = {
         "y": [], "blend": [], "historical_xg": [], "market": [],
-        "poisson": [], "poisson_cal": [], "hgb": [],
+        "poisson": [], "poisson_cal": [], "poisson_platt": [], "hgb": [],
     }
     oof_all = {
-        "y": [], "historical_xg": [], "poisson": [], "poisson_cal": [], "hgb": [],
+        "y": [], "historical_xg": [], "poisson": [], "poisson_cal": [], "poisson_platt": [], "hgb": [],
     }
 
     for fold_number, (train_slice, calibration_slice, validation_slice) in enumerate(windows, 1):
@@ -331,6 +437,11 @@ def run_walk_forward(
             y_calibration,
         )
         p_poisson_cal = poisson_calibrator.predict(p_poisson)
+        p_poisson_platt = platt_scale_probabilities(
+            calibration["p_poisson"].to_numpy(dtype=float),
+            y_calibration,
+            p_poisson,
+        )
 
         # Compare the market-dependent research blend with the production
         # historical-only model on identical rows where market prices exist.
@@ -340,10 +451,12 @@ def run_walk_forward(
             _score_row(y, p_market, market_valid, "MARKET", fold_number),
             _score_row(y, p_poisson, market_valid, "POISSON", fold_number),
             _score_row(y, p_poisson_cal, market_valid, "POISSON_CAL", fold_number),
+            _score_row(y, p_poisson_platt, market_valid, "POISSON_PLATT", fold_number),
             _score_row(y, p_hgb, market_valid, "HIST_GB", fold_number),
             _score_row(y, p_historical, np.ones(len(y), dtype=bool), "HISTORICAL_XG", fold_number, "ALL_MATCHES"),
             _score_row(y, p_poisson, np.ones(len(y), dtype=bool), "POISSON", fold_number, "ALL_MATCHES"),
             _score_row(y, p_poisson_cal, np.ones(len(y), dtype=bool), "POISSON_CAL", fold_number, "ALL_MATCHES"),
+            _score_row(y, p_poisson_platt, np.ones(len(y), dtype=bool), "POISSON_PLATT", fold_number, "ALL_MATCHES"),
             _score_row(y, p_hgb, np.ones(len(y), dtype=bool), "HIST_GB", fold_number, "ALL_MATCHES"),
         ])
 
@@ -353,6 +466,7 @@ def run_walk_forward(
             ("MARKET", p_market),
             ("POISSON", p_poisson),
             ("POISSON_CAL", p_poisson_cal),
+            ("POISSON_PLATT", p_poisson_platt),
             ("HIST_GB", p_hgb),
         ):
             confidence_rows.extend(calculate_confidence_rows(
@@ -402,11 +516,13 @@ def run_walk_forward(
         oof["market"].extend(p_market[valid_indices].tolist())
         oof["poisson"].extend(p_poisson[valid_indices].tolist())
         oof["poisson_cal"].extend(p_poisson_cal[valid_indices].tolist())
+        oof["poisson_platt"].extend(p_poisson_platt[valid_indices].tolist())
         oof["hgb"].extend(p_hgb[valid_indices].tolist())
         oof_all["y"].extend(y.tolist())
         oof_all["historical_xg"].extend(p_historical.tolist())
         oof_all["poisson"].extend(p_poisson.tolist())
         oof_all["poisson_cal"].extend(p_poisson_cal.tolist())
+        oof_all["poisson_platt"].extend(p_poisson_platt.tolist())
         oof_all["hgb"].extend(p_hgb.tolist())
 
         print(
@@ -423,6 +539,7 @@ def run_walk_forward(
         _score_row(y_all, np.asarray(oof["market"]), all_mask, "MARKET", 0),
         _score_row(y_all, np.asarray(oof["poisson"]), all_mask, "POISSON", 0),
         _score_row(y_all, np.asarray(oof["poisson_cal"]), all_mask, "POISSON_CAL", 0),
+        _score_row(y_all, np.asarray(oof["poisson_platt"]), all_mask, "POISSON_PLATT", 0),
         _score_row(y_all, np.asarray(oof["hgb"]), all_mask, "HIST_GB", 0),
     ])
 
@@ -432,6 +549,7 @@ def run_walk_forward(
         _score_row(y_all_matches, np.asarray(oof_all["historical_xg"]), all_match_mask, "HISTORICAL_XG", 0, "ALL_MATCHES"),
         _score_row(y_all_matches, np.asarray(oof_all["poisson"]), all_match_mask, "POISSON", 0, "ALL_MATCHES"),
         _score_row(y_all_matches, np.asarray(oof_all["poisson_cal"]), all_match_mask, "POISSON_CAL", 0, "ALL_MATCHES"),
+        _score_row(y_all_matches, np.asarray(oof_all["poisson_platt"]), all_match_mask, "POISSON_PLATT", 0, "ALL_MATCHES"),
         _score_row(y_all_matches, np.asarray(oof_all["hgb"]), all_match_mask, "HIST_GB", 0, "ALL_MATCHES"),
     ])
 
@@ -444,6 +562,7 @@ def run_walk_forward(
         ("MARKET", np.asarray(oof["market"], dtype=float)),
         ("POISSON", np.asarray(oof["poisson"], dtype=float)),
         ("POISSON_CAL", np.asarray(oof["poisson_cal"], dtype=float)),
+        ("POISSON_PLATT", np.asarray(oof["poisson_platt"], dtype=float)),
         ("HIST_GB", np.asarray(oof["hgb"], dtype=float)),
     ):
         confidence_rows.extend(calculate_confidence_rows(
@@ -457,6 +576,7 @@ def run_walk_forward(
         ("HISTORICAL_XG", np.asarray(oof_all["historical_xg"], dtype=float)),
         ("POISSON", np.asarray(oof_all["poisson"], dtype=float)),
         ("POISSON_CAL", np.asarray(oof_all["poisson_cal"], dtype=float)),
+        ("POISSON_PLATT", np.asarray(oof_all["poisson_platt"], dtype=float)),
         ("HIST_GB", np.asarray(oof_all["hgb"], dtype=float)),
     ):
         confidence_rows.extend(calculate_confidence_rows(
@@ -474,11 +594,14 @@ def run_walk_forward(
     metrics.to_csv(output_dir / "walk_forward_metrics.csv", index=False, encoding="utf-8-sig")
     policies.to_csv(output_dir / "walk_forward_policy_roi.csv", index=False, encoding="utf-8-sig")
     confidence.to_csv(output_dir / "walk_forward_confidence.csv", index=False, encoding="utf-8-sig")
+    odds_provenance.to_csv(output_dir / "walk_forward_odds_provenance.csv", index=False, encoding="utf-8-sig")
 
     print("\nOOF metrics (fold=0 is pooled out-of-fold):")
     print(metrics.loc[metrics["fold"] == 0].to_string(index=False))
     print("\nOOF selective accuracy (fold=0 is pooled out-of-fold):")
     print(confidence.loc[confidence["fold"] == 0].to_string(index=False))
+    print("\\nOdds provenance audit (TRAIN rows only):")
+    print(odds_provenance.to_string(index=False))
     print(f"\nReports saved to: {output_dir.resolve()}")
     return metrics, policies, confidence
 
