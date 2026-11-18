@@ -36,6 +36,11 @@ def predict_fixtures(
         fixtures,
         history_path=history_path,
     )
+    expected_history_sha = metadata.get("source_data", {}).get("xg18_git_blob_sha")
+    if expected_history_sha and expected_history_sha != history_metadata["history_git_blob_sha"]:
+        raise ValueError(
+            "Model/history source mismatch: the model was built against a different xg18.csv snapshot."
+        )
     probability = np.asarray(model.predict_proba(featured), dtype=float)
     if probability.shape != (len(featured),):
         raise ValueError("Model returned an invalid probability vector.")
