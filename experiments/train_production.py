@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from experiments.comparison import (
+    git_blob_sha,
     load_dataset,
     make_partitions,
     purge_same_calendar_day_boundaries,
@@ -134,9 +135,7 @@ def train_production_model(
         },
         "source_data": {
             "xgo_path": str(data_path.name),
-            "xgo_git_blob_sha": summary["historical_source"].get(
-                "xgo_git_blob_sha", None
-            ),
+            "xgo_git_blob_sha": git_blob_sha(data_path),
             "xg18_path": str(history_path.name),
             "xg18_git_blob_sha": history_metadata["history_git_blob_sha"],
             "xg18_history_date_max": history_metadata["history_date_max"],
