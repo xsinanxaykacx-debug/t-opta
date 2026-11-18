@@ -11,7 +11,11 @@ import sys
 
 import numpy as np
 import pandas as pd
+from sklearn.isotonic import IsotonicRegression
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -101,6 +105,7 @@ def calculate_policy_rows(
     market_valid: np.ndarray,
     threshold: float,
     fold: int,
+    model_name: str = "BLEND",
 ) -> list[dict]:
     """Calculate OVER, UNDER and combined flat-stake ROI for a fixed edge."""
     if not np.isfinite(threshold) or threshold <= 0:
@@ -127,6 +132,7 @@ def calculate_policy_rows(
 
         rows.append({
             "fold": fold,
+            "model": model_name,
             "threshold": float(threshold),
             "side": side,
             "bets": int(len(odds)),
@@ -139,6 +145,7 @@ def calculate_policy_rows(
 
     rows.append({
         "fold": fold,
+        "model": model_name,
         "threshold": float(threshold),
         "side": "ALL",
         "bets": len(all_profits),
@@ -218,7 +225,10 @@ def run_walk_forward(
     metric_rows = []
     policy_rows = []
     confidence_rows = []
-    oof = {"y": [], "model": [], "market": [], "poisson": [], "valid": []}
+    oof = {
+        "y": [], "model": [], "market": [], "poisson": [],
+        "poisson_cal": [], "xg_logistic": [],
+    }
 
     for fold_number, (train_slice, calibration_slice, validation_slice) in enumerate(windows, 1):
         train = frame.iloc[train_slice].copy()
@@ -230,21 +240,63 @@ def run_walk_forward(
         model.calibrate(calibration)
 
         y = model._y(validation)
+        y_calibration = model._y(calibration)
         p_model = model.predict_proba(validation)
         p_poisson = validation["p_poisson"].to_numpy(dtype=float)
         p_market, over_odds, under_odds, market_valid = market_data(validation)
 
-        # Compare model, market and Poisson on exactly the same valid-market rows.
+        # Calibrated Poisson-only candidate: no bookmaker odds in its features.
+        poisson_calibrator = IsotonicRegression(
+            y_min=0.001,
+            y_max=0.999,
+            out_of_bounds="clip",
+        )
+        poisson_calibrator.fit(
+            calibration["p_poisson"].to_numpy(dtype=float),
+            y_calibration,
+        )
+        p_poisson_cal = poisson_calibrator.predict(p_poisson)
+
+        # Historical xG-only logistic candidate. All inputs are as-of historical
+        # lambdas/Poisson features; market odds are deliberately excluded.
+        feature_columns = ["lambda_home", "lambda_away", "p_poisson"]
+        xg_model = make_pipeline(
+            StandardScaler(),
+            LogisticRegression(max_iter=5000, random_state=42),
+        )
+        xg_model.fit(
+            train[feature_columns].to_numpy(dtype=float),
+            model._y(train),
+        )
+        xg_calibration_raw = xg_model.predict_proba(
+            calibration[feature_columns].to_numpy(dtype=float)
+        )[:, 1]
+        xg_validation_raw = xg_model.predict_proba(
+            validation[feature_columns].to_numpy(dtype=float)
+        )[:, 1]
+        xg_calibrator = IsotonicRegression(
+            y_min=0.001,
+            y_max=0.999,
+            out_of_bounds="clip",
+        )
+        xg_calibrator.fit(xg_calibration_raw, y_calibration)
+        p_xg_logistic = xg_calibrator.predict(xg_validation_raw)
+
+        # Compare all probability models on exactly the same valid-market rows.
         metric_rows.extend([
             _score_row(y, p_model, market_valid, "BLEND", fold_number),
             _score_row(y, p_market, market_valid, "MARKET", fold_number),
             _score_row(y, p_poisson, market_valid, "POISSON", fold_number),
+            _score_row(y, p_poisson_cal, market_valid, "POISSON_CAL", fold_number),
+            _score_row(y, p_xg_logistic, market_valid, "XG_LOGISTIC_CAL", fold_number),
         ])
 
         for model_name, probabilities in (
             ("BLEND", p_model),
             ("MARKET", p_market),
             ("POISSON", p_poisson),
+            ("POISSON_CAL", p_poisson_cal),
+            ("XG_LOGISTIC_CAL", p_xg_logistic),
         ):
             confidence_rows.extend(calculate_confidence_rows(
                 y[market_valid],
@@ -253,23 +305,31 @@ def run_walk_forward(
                 fold_number,
             ))
 
-        for threshold in thresholds:
-            policy_rows.extend(calculate_policy_rows(
-                y=y,
-                p_model=p_model,
-                p_market=p_market,
-                over_odds=over_odds,
-                under_odds=under_odds,
-                market_valid=market_valid,
-                threshold=float(threshold),
-                fold=fold_number,
-            ))
+        for model_name, probabilities in (
+            ("BLEND", p_model),
+            ("POISSON_CAL", p_poisson_cal),
+            ("XG_LOGISTIC_CAL", p_xg_logistic),
+        ):
+            for threshold in thresholds:
+                policy_rows.extend(calculate_policy_rows(
+                    y=y,
+                    p_model=probabilities,
+                    p_market=p_market,
+                    over_odds=over_odds,
+                    under_odds=under_odds,
+                    market_valid=market_valid,
+                    threshold=float(threshold),
+                    fold=fold_number,
+                    model_name=model_name,
+                ))
 
         valid_indices = np.flatnonzero(market_valid)
         oof["y"].extend(y[valid_indices].tolist())
         oof["model"].extend(p_model[valid_indices].tolist())
         oof["market"].extend(p_market[valid_indices].tolist())
         oof["poisson"].extend(p_poisson[valid_indices].tolist())
+        oof["poisson_cal"].extend(p_poisson_cal[valid_indices].tolist())
+        oof["xg_logistic"].extend(p_xg_logistic[valid_indices].tolist())
         oof["valid"].extend([True] * len(valid_indices))
 
         print(
@@ -293,6 +353,8 @@ def run_walk_forward(
         ("BLEND", np.asarray(oof["model"], dtype=float)),
         ("MARKET", np.asarray(oof["market"], dtype=float)),
         ("POISSON", np.asarray(oof["poisson"], dtype=float)),
+        ("POISSON_CAL", np.asarray(oof["poisson_cal"], dtype=float)),
+        ("XG_LOGISTIC_CAL", np.asarray(oof["xg_logistic"], dtype=float)),
     ):
         confidence_rows.extend(calculate_confidence_rows(
             y_all,
