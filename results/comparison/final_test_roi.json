@@ -1,0 +1,13 @@
+{
+  "experiment_run_id": 44330945792,
+  "selected_model": "odds_aware",
+  "threshold": 0.735,
+  "bets": 450,
+  "wins": 297,
+  "losses": 153,
+  "hit_rate": 0.66,
+  "average_odds": 1.4494888888888888,
+  "roi_per_unit": -0.058977777777777775,
+  "net_units": -26.54,
+  "note": "The 65% accuracy target passed, but this historical sample was not profitable. Do not treat this model as a validated profitable betting system."
+}
