@@ -1,0 +1,127 @@
+"""Join xgo odds with the repository's audited, strict-past xg18 features."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+from scipy.stats import poisson
+
+from modules.feature_engine import FeatureEngine
+from modules.historical_engine import HistoricalEngine
+
+
+def add_xg18_historical_features(
+    frame: pd.DataFrame,
+    history_path: str | Path = "xg18.csv",
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Build strictly prior-calendar-day xG features for every xgo fixture.
+
+    xgo.csv is the odds-bearing modelling sample. xg18.csv is the broader
+    historical source, including matches without odds. Joining by MatchID lets
+    those additional matches contribute to history without becoming target
+    rows in the odds comparison.
+    """
+    required = {"MatchID", "Date"}
+    missing_columns = sorted(required - set(frame.columns))
+    if missing_columns:
+        raise ValueError(f"Missing xgo identity columns: {missing_columns}")
+
+    out = frame.copy(deep=True)
+    out["MatchID"] = out["MatchID"].astype("string").str.strip()
+    if out["MatchID"].isna().any() or out["MatchID"].duplicated().any():
+        raise ValueError("xgo MatchID values must be populated and unique.")
+
+    history = HistoricalEngine(history_path)
+    history_ids = set(history.data["MatchID"].astype(str))
+    requested_ids = out["MatchID"].astype(str).tolist()
+    missing_ids = [match_id for match_id in requested_ids if match_id not in history_ids]
+    if missing_ids:
+        preview = missing_ids[:10]
+        raise ValueError(
+            f"{len(missing_ids)} xgo MatchID values are absent from xg18.csv; "
+            f"examples: {preview}"
+        )
+
+    feature_engine = FeatureEngine(history)
+    features = feature_engine.build_dataset(requested_ids)
+    features["MatchID"] = features["MatchID"].astype("string").str.strip()
+    if features["MatchID"].duplicated().any():
+        raise ValueError("xg18 feature builder returned duplicate MatchID values.")
+
+    if len(features) != len(out):
+        raise ValueError(
+            f"xg18 feature rows ({len(features)}) do not match xgo rows ({len(out)})."
+        )
+
+    history_date = pd.to_datetime(features["match_date"], errors="coerce", utc=True)
+    source_date = pd.to_datetime(out["Date"], errors="coerce", utc=True)
+    if history_date.isna().any() or source_date.isna().any():
+        raise ValueError("Invalid match date encountered during xg18 join.")
+    if not history_date.dt.normalize().reset_index(drop=True).equals(
+        source_date.dt.normalize().reset_index(drop=True)
+    ):
+        raise ValueError("xgo and xg18 MatchID dates do not agree by calendar day.")
+
+    identity_columns = {"MatchID", "League", "Season", "match_date"}
+    historical_columns = [
+        column for column in features.columns if column not in identity_columns
+    ]
+    historical = features[["MatchID", "match_date", *historical_columns]].copy()
+    rename = {column: f"hist_{column}" for column in historical_columns}
+    historical = historical.rename(columns=rename)
+    historical = historical.rename(columns={"match_date": "hist_match_date"})
+
+    out = out.merge(
+        historical,
+        on="MatchID",
+        how="left",
+        validate="one_to_one",
+        sort=False,
+    )
+    if out[[f"hist_{column}" for column in historical_columns]].isna().all(axis=1).any():
+        raise ValueError("One or more xgo fixtures have no joined historical features.")
+
+    def positive_feature(name: str, fallback_name: str) -> np.ndarray:
+        primary = pd.to_numeric(out[name], errors="coerce")
+        fallback = pd.to_numeric(out[fallback_name], errors="coerce")
+        values = primary.fillna(fallback).fillna(1.25)
+        return values.clip(lower=0.05, upper=5.0).to_numpy(dtype=float)
+
+    home_for = positive_feature(
+        "hist_home_xg_for_ewma_5", "hist_home_xg_for_avg_5"
+    )
+    home_against = positive_feature(
+        "hist_home_xg_against_ewma_5", "hist_home_xg_against_avg_5"
+    )
+    away_for = positive_feature(
+        "hist_away_xg_for_ewma_5", "hist_away_xg_for_avg_5"
+    )
+    away_against = positive_feature(
+        "hist_away_xg_against_ewma_5", "hist_away_xg_against_avg_5"
+    )
+
+    # Symmetric attack-vs-defence interaction with a modest, fixed home factor.
+    lambda_home = np.clip(np.sqrt(home_for * away_against) * 1.05, 0.05, 5.0)
+    lambda_away = np.clip(np.sqrt(away_for * home_against) / 1.05, 0.05, 5.0)
+    out["lambda_home"] = lambda_home
+    out["lambda_away"] = lambda_away
+    out["p_poisson"] = np.clip(
+        poisson.sf(2, lambda_home + lambda_away),
+        1e-6,
+        1.0 - 1e-6,
+    )
+
+    metadata = {
+        "history_source": str(history.data_path),
+        "history_rows": int(len(history.data)),
+        "history_dated_rows": int(history.data["Date"].notna().sum()),
+        "history_date_min": history.data["Date"].min().isoformat(),
+        "history_date_max": history.data["Date"].max().isoformat(),
+        "xgo_match_id_coverage": 1.0,
+        "historical_feature_count": int(len(historical_columns)),
+        "history_rule": "strictly earlier calendar days; same-day matches excluded",
+    }
+    return out, metadata
