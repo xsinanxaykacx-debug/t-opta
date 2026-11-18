@@ -70,8 +70,10 @@ Raw counts and effective counts are both recorded in the split manifest.
 
 1. Fit model parameters on TRAIN.
 2. Fit probability calibration on CALIBRATION.
-3. Select the 65% confidence policy and candidate model on POLICY_SELECT.
-4. Validate the frozen candidate and threshold on POLICY_CHECK.
+3. On POLICY_SELECT, choose the highest-hit-rate threshold with at least 50
+   selected fixtures; select the candidate model by hit rate, then sample size.
+4. Validate the frozen candidate and threshold on POLICY_CHECK, requiring at
+   least 50 fixtures and at least 65% hit rate.
 5. If POLICY_CHECK fails, FINAL_TEST is not opened.
 6. If POLICY_CHECK passes, evaluate all three frozen models once on FINAL_TEST.
    FINAL_TEST never selects a model, threshold, feature, or calibration method.
