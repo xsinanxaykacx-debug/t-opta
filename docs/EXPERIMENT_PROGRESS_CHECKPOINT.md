@@ -173,3 +173,47 @@ Updated pooled flat-stake edge ROI across the 10 OOF folds:
 - Latest completed diagnostics before the fixed-confidence-report change: run #26 `44342029767`, SUCCESS. The primary model's 300-match POLICY CHECK accuracy at the ordinary 0.50 cutoff was 50.67%; this is not the confidence-gated result.
 - Current fixed-confidence workflow run #27: `44342342641`, status IN_PROGRESS when this checkpoint was updated. Verify the printed 0.75 POLICY SELECT / POLICY CHECK counts and hit rates.
 - Latest tests run #197: `44342342643`, status PENDING when this checkpoint was updated.
+
+
+## Session checkpoint — 2026-11-18 (upcoming-prediction workflow and selective top-10 metrics)
+
+### Work added on `diagnostics/over-under-market-analysis`
+
+- Added `scripts/predict_upcoming.py`, a command-line prediction path for future fixtures. Usage:
+  `python scripts/predict_upcoming.py xgo.csv upcoming.csv --output predictions.csv --confidence 0.70 --top 10`.
+- Upcoming input requires `Date,League,HomeTeam,AwayTeam`. It builds leakage-safe historical features, uses `PoissonOnlyModel` and does not use bookmaker odds.
+- The predictor applies a confidence gate, selects at most the top N eligible fixtures, and emits `PICK` / `NO_PICK` rows. It does not force picks if fewer than N fixtures qualify.
+- Same-UTC-calendar-day results are excluded from historical features before future fixture predictions. Added `tests/test_predict_upcoming.py` for top-N selection and same-day exclusion.
+- Wired the CLI help check and new test file into `.github/workflows/diagnostics-report.yml`.
+- Fixed result ordering so selected picks appear before `NO_PICK` fixtures.
+- Added top-10 highest-confidence hit-rate fields to `confidence_policy_analysis()` in `BOT.py` and to the walk-forward selective-confidence report in `scripts/walk_forward_over_under.py`; updated associated tests.
+- Added 0.70 and 0.75 fixed-cutoff policy reports for both POLICY SELECT and POLICY CHECK. These are reporting cutoffs; do not optimize them against POLICY CHECK.
+
+### Verified diagnostic evidence
+
+- Diagnostics workflow run #35, ID `44343017252`, commit `ae3fb2c7a6f22107a784951b9b24d24e1bb407c3`: **SUCCESS**.
+- Its log explicitly reports POLICY CHECK (300 fixtures):
+  - At fixed confidence >=0.70: 27 picks (9.0% coverage), 22 correct, 81.48% accuracy.
+  - Among the 10 highest-confidence picks within those 27: 8 correct, 80.00% accuracy.
+  - At fixed confidence >=0.75: 7 picks (2.3% coverage), 5 correct, 71.43% accuracy.
+  - Ordinary all-fixture POLICY CHECK accuracy at the 0.50 decision threshold: 50.67%.
+- POLICY SELECT (300 fixtures), >=0.70: 33 picks, 22 correct, 66.67%; top 10: 8/10. At >=0.75: 8 picks, 7 correct (87.50%), but this is the selection segment, not the independent check.
+- Interpretation: the POLICY CHECK top-10 result is an encouraging small-sample selective result, not proof of a stable 80% hit rate. Only 27/300 fixtures passed the >=0.70 gate; do not promise 6–7 correct out of every arbitrary 10 matches. Confidence intervals / further chronological validation are still required. This does not establish positive ROI or a production-ready betting strategy.
+- The top-10 metric added to the walk-forward CSV is now part of the diagnostics output; inspect the generated artifact and fold-level counts before drawing conclusions.
+
+### CI state at checkpoint time
+
+- Diagnostics #35 (`44343017252`) is completed SUCCESS.
+- Tests workflow #210 (`44343017268`), same commit, was still **IN_PROGRESS** at last check. Its pytest job ID was `134940189725`; completion and result have not been verified. Earlier test runs from intermediate commits were cancelled and are not evidence of a passing test suite.
+- Do not state that the full test suite passed until run #210 (or a later run on the final branch HEAD) is completed successfully.
+- Latest observed branch commit from diagnostics run: `ae3fb2c7a6f22107a784951b9b24d24e1bb407c3`. Confirm the current branch HEAD before the next change.
+- Main remains separate; no merge is authorized or performed. Final Test remains sealed.
+
+### Next actions
+
+1. Check tests run #210 (`44343017268`) and inspect pytest logs if it fails; fix issues on the development branch only.
+2. Confirm the latest branch HEAD and rerun all relevant tests after fixes.
+3. Inspect `walk_forward_confidence.csv` top-10 metrics fold by fold, including sample counts and stability; do not rely only on pooled accuracy.
+4. Validate the upcoming-fixture CLI with a realistic upcoming CSV and check date parsing, timezone semantics, missing history, duplicate fixtures, and no-result leakage.
+5. Keep odds provenance unresolved until the exact original odds source/file lineage and timestamp are documented; primary predictions remain odds-independent.
+6. Continue improving the model and evaluate on chronological data without tuning on POLICY CHECK. Do not open or use Final Test until the model/policy is frozen and the agreed merge gate is met.
