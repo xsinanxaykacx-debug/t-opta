@@ -30,6 +30,14 @@ def test_matches_on_same_calendar_day_do_not_update_each_others_history():
         "lambda_away",
         "league_average",
         "home_advantage",
+        "home_recent_for_10",
+        "home_recent_against_10",
+        "away_recent_for_10",
+        "away_recent_against_10",
+        "home_recent_for_15",
+        "home_recent_against_15",
+        "away_recent_for_15",
+        "away_recent_against_15",
     ):
         assert np.isclose(
             result.loc[1, column],
@@ -63,3 +71,26 @@ def test_goal_based_poisson_features_exclude_same_day_results():
     ):
         assert np.isfinite(result.loc[1, column])
         assert np.isclose(result.loc[1, column], result.loc[2, column])
+
+
+def test_recent_xg_windows_use_only_prior_matches_and_keep_window_lengths():
+    frame = pd.DataFrame({
+        "Date": pd.date_range("2024-01-01", periods=17, freq="7D", tz="UTC"),
+        "League": ["L1"] * 17,
+        "HomeTeam": ["A"] * 17,
+        "AwayTeam": [f"OPP_{index}" for index in range(17)],
+        "Home_xG": [float(index) for index in range(1, 18)],
+        "Away_xG": [0.5] * 17,
+        "FTHG": [1] * 17,
+        "FTAG": [0] * 17,
+    })
+
+    result = add_leakage_safe_features(frame)
+    target = result.iloc[-1]
+
+    # The final fixture sees only the first 16 matches, never its own xG.
+    assert np.isclose(target["home_recent_for"], np.mean([12, 13, 14, 15, 16]))
+    assert np.isclose(target["home_recent_for_10"], np.mean(range(7, 17)))
+    assert np.isclose(target["home_recent_for_15"], np.mean(range(2, 17)))
+    assert np.isclose(target["home_recent_for_10"], 11.5)
+    assert np.isclose(target["home_recent_for_15"], 9.0)
