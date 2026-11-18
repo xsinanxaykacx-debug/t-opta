@@ -3,8 +3,8 @@
 ## Current state
 - Repository: https://github.com/xsinanxaykacx-debug/t-opta
 - Main branch includes UTC-day leakage fixes, reliability diagnostics, SciPy dependency, selective-accuracy reporting, and a validation gate that keeps the final holdout sealed.
-- Main BOT.py blob: `311819ca30c65694a968df41481024278835ecec`
-- Latest merged implementation commit: `1e7316c517452abfdd4b65ba8d30fb4ee72a4752`
+- Main BOT.py blob: `8402945bd4692be8d134bed0d0a0460e58a3e47b`
+- Latest merged implementation commit: `3e4c64034cfed668f0c99d5425658e70ae9b779a`
 
 ## Data and split
 - Local source dataset used for validation exploration: `xg18_with_all_league_odds.csv`
@@ -74,6 +74,6 @@
 
 ## Next steps
 1. Resolve why GitHub Actions is not reporting a run and obtain a real `pytest -q` result.
-2. Improve the model on Train/Validation only; current hybrid does not beat market baseline.
-3. Re-run the frozen Policy Select / Policy Check protocol after each candidate is locked.
-4. Open the 5,746-match final holdout only after the validation gate passes.
+3. Improve the model on Train/Validation only; current hybrid does not beat market baseline.
+4. Establish a fresh Policy Select / Policy Check protocol on new data.
+5. Open a new final holdout only after the new validation gate passes.
