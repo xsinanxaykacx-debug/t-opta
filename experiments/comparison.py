@@ -43,7 +43,7 @@ ODDS_BUCKET_EDGES = np.array([1.50, 1.60, 1.70, 1.80, 1.90, 2.00, 2.10])
 
 def git_blob_sha(path: Path) -> str:
     payload = path.read_bytes()
-    header = f"blob {len(payload)}\\0".encode("ascii")
+    header = f"blob {len(payload)}\0".encode("ascii")
     return hashlib.sha1(header + payload).hexdigest()
 
 
