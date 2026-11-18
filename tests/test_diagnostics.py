@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from BOT import market_data
+
 from diagnostics import (
     directional_roi_report,
     market_model_brier_report,
@@ -153,3 +155,39 @@ def test_run_diagnostics_writes_five_csv_reports(tmp_path):
 
     assert set(reports) == expected
     assert len(list(tmp_path.glob("test_*.csv"))) == 5
+
+
+def test_market_data_uses_only_non_closing_odds_columns():
+    frame = pd.DataFrame({
+        "odds_Avg>2.5": [2.00],
+        "odds_Avg<2.5": [2.00],
+        "odds_B365>2.5": [2.20],
+        "odds_B365<2.5": [1.80],
+        "odds_AvgC>2.5": [1.10],
+        "odds_AvgC<2.5": [8.00],
+        "odds_B365C>2.5": [1.05],
+        "odds_B365C<2.5": [9.00],
+    })
+
+    p_market, over, under, valid = market_data(frame)
+
+    assert valid.tolist() == [True]
+    assert np.isclose(over[0], 2.00)
+    assert np.isclose(under[0], 2.00)
+    assert np.isclose(p_market[0], 0.50)
+
+
+def test_market_data_never_falls_back_to_closing_odds():
+    frame = pd.DataFrame({
+        "odds_AvgC>2.5": [1.10],
+        "odds_AvgC<2.5": [8.00],
+        "odds_B365C>2.5": [1.05],
+        "odds_B365C<2.5": [9.00],
+    })
+
+    p_market, over, under, valid = market_data(frame)
+
+    assert valid.tolist() == [False]
+    assert np.isclose(p_market[0], 0.50)
+    assert np.isnan(over[0])
+    assert np.isnan(under[0])
