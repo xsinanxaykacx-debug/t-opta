@@ -59,12 +59,10 @@ class FeatureEngine:
 
     def build_features(self, match_id: str) -> dict:
         """Build one pre-match row; target match outcomes/statistics are never features."""
-        matches = self.history.data.loc[self.history.data["MatchID"].eq(str(match_id))]
-        if len(matches) != 1:
-            raise KeyError(
-                f"Expected exactly one match for MatchID={match_id!r}; found {len(matches)}."
-            )
-        match = matches.iloc[0]
+        try:
+            match = self.history._match_index.loc[str(match_id)]
+        except KeyError as exc:
+            raise KeyError(f"Unknown MatchID={match_id!r}.") from exc
         if pd.isna(match["Date"]):
             raise ValueError(f"MatchID={match_id!r} has no valid kickoff date.")
         cutoff = match["Date"]
