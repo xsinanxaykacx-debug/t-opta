@@ -174,6 +174,20 @@ def add_xg18_historical_features(
 
     out = _add_poisson_features(out)
 
+    metadata = {
+        "history_source": history_file.name,
+        "history_git_blob_sha": actual_history_sha,
+        "history_rows": int(len(history.data)),
+        "history_dated_rows": int(history.data["Date"].notna().sum()),
+        "history_date_min": history.data["Date"].min().isoformat(),
+        "history_date_max": history.data["Date"].max().isoformat(),
+        "xgo_match_id_coverage": 1.0,
+        "fixture_identity_verified": True,
+        "pre_final_target_and_xg_verified": True,
+        "pre_final_target_rows_verified": int(len(validation_out)),
+        "historical_feature_count": int(len(historical_columns)),
+        "history_rule": "same league; strictly earlier calendar days; same-day matches excluded",
+    }
     return out, metadata
 
 
