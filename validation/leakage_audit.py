@@ -5,6 +5,8 @@ from typing import Any
 
 import pandas as pd
 
+from modules.historical_engine import filter_strict_past
+
 FORBIDDEN_FEATURE_COLUMNS = {
     "FTHG", "FTAG", "HT_Home_Goals", "HT_Away_Goals",
     "HT_Home_xG", "HT_Away_xG", "Home_xG", "Away_xG",
@@ -18,11 +20,10 @@ FORBIDDEN_FEATURE_COLUMNS = {
 
 
 def audit_match_features(feature_engine: Any, match_id: str) -> dict:
-    """Audit one feature row and the historical match IDs that can influence it."""
+    """Audit one feature row and all historical matches used by its features."""
     history_engine = feature_engine.history
     match_id = str(match_id)
     violations: list[str] = []
-    warnings: list[str] = []
     try:
         target = history_engine._match_index.loc[match_id]
     except KeyError:
@@ -46,8 +47,8 @@ def audit_match_features(feature_engine: Any, match_id: str) -> dict:
     sources = sources.drop_duplicates("MatchID")
 
     if not sources.empty:
-        if not (sources["Date"] < cutoff).all():
-            violations.append("A source match is not strictly earlier than target kickoff.")
+        if not (sources["Date"].dt.normalize() < cutoff.normalize()).all():
+            violations.append("A source match is not on a strictly earlier calendar day.")
         if sources["MatchID"].astype(str).eq(match_id).any():
             violations.append("Target MatchID appears in historical feature sources.")
         if sources[["FTHG", "FTAG"]].isna().any().any():
@@ -62,18 +63,9 @@ def audit_match_features(feature_engine: Any, match_id: str) -> dict:
     if pd.Timestamp(features["match_date"]) != cutoff:
         violations.append("Feature row match_date does not match target kickoff.")
 
-    dates = history_engine.data["Date"].dropna()
-    if not dates.empty and (dates == dates.dt.normalize()).any():
-        same_day = sources.loc[sources["Date"].dt.date == cutoff.date()]
-        if not same_day.empty:
-            warnings.append(
-                "Same-day source rows exist alongside date-only timestamps; "
-                "confirm kickoff-time provenance before using them."
-            )
-
     return {
         "match_id": match_id, "passed": not violations,
-        "violations": violations, "warnings": warnings,
+        "violations": violations, "warnings": [],
         "cutoff": cutoff.isoformat(),
         "source_match_ids": sorted(sources["MatchID"].astype(str).unique().tolist()),
         "source_match_count": int(sources["MatchID"].nunique()),
@@ -92,11 +84,9 @@ def audit_feature_sample(feature_engine: Any, sample_size: int = 100, seed: int 
     chosen = eligible.sample(n=min(sample_size, len(eligible)), random_state=seed)
     results = [audit_match_features(feature_engine, mid) for mid in chosen]
     failed = [item["match_id"] for item in results if not item["passed"]]
-    warnings = [{"match_id": item["match_id"], "warning": warning}
-                for item in results for warning in item["warnings"]]
     return {"passed": not failed, "sample_size": len(results), "seed": seed,
-            "failed_match_ids": failed, "warning_count": len(warnings),
-            "warnings": warnings, "results": results}
+            "failed_match_ids": failed, "warning_count": 0,
+            "warnings": [], "results": results}
 
 
 def audit_feature_dataset(
@@ -114,7 +104,6 @@ def audit_feature_dataset(
                 "details": [] if include_details else None}
 
     failed_ids: list[str] = []
-    warning_count = 0
     source_total = 0
     details: list[dict] = []
     for offset in range(0, len(eligible), batch_size):
@@ -123,7 +112,6 @@ def audit_feature_dataset(
             source_total += result.get("source_match_count", 0)
             if not result["passed"]:
                 failed_ids.append(match_id)
-            warning_count += len(result.get("warnings", []))
             if include_details:
                 details.append(result)
 
@@ -135,7 +123,7 @@ def audit_feature_dataset(
         "audited_matches": audited,
         "failed_count": len(failed_ids),
         "failed_match_ids": failed_ids,
-        "warning_count": warning_count,
+        "warning_count": 0,
         "average_source_matches": float(source_total / audited),
         "details": details if include_details else None,
     }
