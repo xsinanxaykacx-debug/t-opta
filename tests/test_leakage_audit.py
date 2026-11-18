@@ -3,7 +3,9 @@ import pytest
 
 from modules.feature_engine import FeatureEngine
 from modules.historical_engine import HistoricalEngine
-from validation.leakage_audit import audit_feature_sample, audit_match_features
+from validation.leakage_audit import (
+    audit_feature_dataset, audit_feature_sample, audit_match_features,
+)
 
 
 @pytest.fixture
@@ -49,3 +51,23 @@ def test_sample_audit_is_reproducible(feature_engine):
 def test_sample_size_must_be_positive(feature_engine):
     with pytest.raises(ValueError):
         audit_feature_sample(feature_engine, sample_size=0)
+
+
+def test_full_dataset_audit_covers_every_dated_match(feature_engine):
+    result = audit_feature_dataset(feature_engine, batch_size=2)
+    assert result["passed"] is True
+    assert result["eligible_matches"] == 6
+    assert result["audited_matches"] == 6
+    assert result["failed_count"] == 0
+    assert result["details"] is None
+
+
+def test_full_dataset_audit_can_return_lineage_details(feature_engine):
+    result = audit_feature_dataset(feature_engine, batch_size=3, include_details=True)
+    assert len(result["details"]) == 6
+    assert all(item["passed"] for item in result["details"])
+
+
+def test_full_dataset_audit_validates_batch_size(feature_engine):
+    with pytest.raises(ValueError):
+        audit_feature_dataset(feature_engine, batch_size=0)
