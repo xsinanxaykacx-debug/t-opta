@@ -977,6 +977,12 @@ def main(path, skip_final_test=False):
         f"Toplam maç: {total}"
     )
 
+    # Policy-only CI must not load, transform, or inspect the
+    # sealed final-test rows. Keep only train + validation rows
+    # before chronological feature generation.
+    if skip_final_test:
+        df = df.iloc[:N_TRAIN + N_VAL].copy()
+
     # --------------------------------------------------------
     # Özellik üretimi
     # --------------------------------------------------------
@@ -999,7 +1005,7 @@ def main(path, skip_final_test=False):
         N_TRAIN:N_TRAIN + N_VAL
     ].copy()
 
-    test = df.iloc[
+    test = None if skip_final_test else df.iloc[
         N_TRAIN + N_VAL:
     ].copy()
 
@@ -1038,8 +1044,10 @@ def main(path, skip_final_test=False):
         ("CALIBRATION", calibration),
         ("POLICY SELECT", policy_select),
         ("POLICY CHECK", policy_check),
-        ("FINAL TEST", test)
     ]
+
+    if test is not None:
+        parts.append(("FINAL TEST", test))
 
     for name, part in parts:
 
