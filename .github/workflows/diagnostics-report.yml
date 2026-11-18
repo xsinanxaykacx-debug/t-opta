@@ -58,6 +58,8 @@ jobs:
         run: |
           test -d reports/diagnostics
           test -d reports/walk_forward
+          test -s reports/walk_forward/walk_forward_predictions.csv
+          test -s reports/walk_forward/walk_forward_error_analysis.csv
           diagnostics_count=$(find reports/diagnostics -maxdepth 1 -type f -name '*.csv' | wc -l)
           walk_forward_count=$(find reports/walk_forward -maxdepth 1 -type f -name '*.csv' | wc -l)
           echo "Diagnostic CSV reports: $diagnostics_count"
