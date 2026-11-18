@@ -105,3 +105,5 @@
 - Added a unit test for season boundaries, league-season grouping, small-sample flagging, and exact ROI.
 - CI was observed installing dependencies and entering pytest; the real-data validation/artifacts are not yet confirmed. New commits will trigger a fresh run.
 - This remains development validation only. Final holdout remains sealed, and no performance claim is made.
+
+- Extended each segment with a like-for-like market-direction baseline: selected-side bet count, hit rate, average odds, break-even hit rate, and ROI. This allows direct model-versus-market comparison within the same league/season group rather than reporting model results alone.
