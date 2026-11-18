@@ -66,3 +66,74 @@ def test_upcoming_predictions_exclude_all_same_day_history():
     assert np.allclose(features["league_average"].to_numpy(), [4.0, 4.0])
     assert np.allclose(features["lambda_home"].to_numpy(), [4.0, 4.0])
     assert np.allclose(features["p_poisson"].to_numpy(), features["p_poisson"].iloc[0])
+
+
+def test_prediction_table_uses_supplied_recent_blend_probabilities():
+    upcoming = pd.DataFrame({
+        "Date": pd.to_datetime([
+            "2026-11-20T12:00:00Z",
+            "2026-11-20T13:00:00Z",
+            "2026-11-20T14:00:00Z",
+        ], utc=True),
+        "League": ["L1"] * 3,
+        "HomeTeam": ["A", "B", "C"],
+        "AwayTeam": ["D", "E", "F"],
+        "lambda_home": [1.0, 1.0, 1.0],
+        "lambda_away": [1.0, 1.0, 1.0],
+        "p_poisson": [0.95, 0.05, 0.50],
+    })
+
+    result = build_prediction_table(
+        upcoming,
+        confidence_cutoff=0.70,
+        top_n=2,
+        probabilities=np.array([0.55, 0.91, 0.12]),
+    )
+    picks = result.loc[result["status"] == "PICK"]
+
+    assert set(picks["HomeTeam"]) == {"B", "C"}
+    assert np.allclose(
+        result.set_index("HomeTeam").loc[["A", "B", "C"], "p_over"].to_numpy(),
+        [0.55, 0.91, 0.12],
+    )
+
+
+def test_predict_upcoming_calibrates_recent_blend_from_last_500_history(tmp_path):
+    from scripts.predict_upcoming import predict_upcoming
+
+    size = 510
+    labels = np.arange(size) % 2
+    history = pd.DataFrame({
+        "Date": pd.date_range("2022-01-01", periods=size, freq="D", tz="UTC"),
+        "League": ["L1"] * size,
+        "HomeTeam": [f"T{index % 20}" for index in range(size)],
+        "AwayTeam": [f"T{(index % 20 + 1) % 20}" for index in range(size)],
+        "Home_xG": np.where(labels == 1, 1.8, 0.8),
+        "Away_xG": np.where(labels == 1, 1.0, 0.7),
+        "FTHG": np.where(labels == 1, 2, 0),
+        "FTAG": np.where(labels == 1, 1, 1),
+    })
+    upcoming = pd.DataFrame({
+        "Date": pd.to_datetime(["2024-01-01T18:00:00Z"], utc=True),
+        "League": ["L1"],
+        "HomeTeam": ["T1"],
+        "AwayTeam": ["T2"],
+    })
+    history_path = tmp_path / "history.csv"
+    upcoming_path = tmp_path / "upcoming.csv"
+    output_path = tmp_path / "predictions.csv"
+    history.to_csv(history_path, index=False)
+    upcoming.to_csv(upcoming_path, index=False)
+
+    result = predict_upcoming(
+        history_path,
+        upcoming_path,
+        output_path=output_path,
+        confidence_cutoff=0.70,
+        top_n=10,
+    )
+
+    assert len(result) == 1
+    assert output_path.exists()
+    assert np.isfinite(result["p_over"]).all()
+    assert np.isfinite(result["p_under"]).all()
