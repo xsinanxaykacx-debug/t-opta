@@ -668,7 +668,7 @@ def add_leakage_safe_features(df):
 
             team_recent.setdefault(
                 away_key,
-                deque(maxlen=5)
+                deque(maxlen=15)
             ).append((axg, hxg))
 
             ls = league_stats.setdefault(
