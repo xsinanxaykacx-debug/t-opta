@@ -10,6 +10,7 @@ on:
       - "diagnostics.py"
       - "config.py"
       - "requirements.txt"
+      - "tests/test_diagnostics.py"
       - "xgo.csv"
       - ".github/workflows/diagnostics-report.yml"
 
@@ -38,7 +39,7 @@ jobs:
         run: python -m pytest
 
       - name: Run chronological model evaluation and diagnostics
-        run: python BOT.py xgo.csv
+        run: python BOT.py xgo.csv --policy-only
 
       - name: Verify diagnostic reports
         run: |
