@@ -86,16 +86,21 @@ def summarize_probabilities(labels, probabilities):
     return result
 
 
-def draw_threshold_curve(labels, probabilities):
+def draw_threshold_curve(labels, probabilities, policy):
+    """Evaluate a draw decision policy without changing model probabilities."""
+    if policy not in ("argmax_and_threshold", "probability_threshold_only"):
+        raise ValueError(f"Unknown draw decision policy: {policy}")
     rows = []
     predicted = probabilities.argmax(axis=1)
     total_draws = max(1, int(np.sum(labels == 1)))
     for threshold in np.round(np.arange(0.10, 0.501, 0.025), 3):
-        # Strict policy: a draw pick must be both the top class and clear the threshold.
-        selected = (predicted == 1) & (probabilities[:, 1] >= threshold)
+        above_threshold = probabilities[:, 1] >= threshold
+        if policy == "argmax_and_threshold":
+            selected = (predicted == 1) & above_threshold
+        else:
+            selected = above_threshold
         count = int(selected.sum())
         tp = int(np.sum(selected & (labels == 1)))
-        fp = count - tp
         precision = tp / count if count else 0.0
         recall = tp / total_draws
         f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
@@ -108,6 +113,11 @@ def draw_threshold_curve(labels, probabilities):
             "draw_f1": round(f1, 6),
         })
     return rows
+
+
+def select_threshold(curve):
+    """Choose on selection data only; deterministic tie-breaks favor coverage then lower threshold."""
+    return max(curve, key=lambda row: (row["draw_f1"], row["coverage"], -row["threshold"]))
 
 
 def feature_weight_report(model):
@@ -196,13 +206,23 @@ def main():
     y_confirm = labels_for(threshold_confirm)
     p_confirm = model.predict_proba(x_confirm)
 
-    selection_curve = draw_threshold_curve(y_select, p_select)
-    best = max(selection_curve, key=lambda row: (row["draw_f1"], row["coverage"], -row["threshold"]))
-    chosen_threshold = best["threshold"]
-    confirmation_row = next(
-        row for row in draw_threshold_curve(y_confirm, p_confirm)
-        if row["threshold"] == chosen_threshold
-    )
+    policy_results = {}
+    for policy in ("argmax_and_threshold", "probability_threshold_only"):
+        selection_curve = draw_threshold_curve(y_select, p_select, policy)
+        best = select_threshold(selection_curve)
+        chosen_threshold = best["threshold"]
+        confirmation_curve = draw_threshold_curve(y_confirm, p_confirm, policy)
+        confirmation_row = next(
+            row for row in confirmation_curve if row["threshold"] == chosen_threshold
+        )
+        policy_results[policy] = {
+            "selection_objective": "maximize draw-class F1 on the chronological threshold-selection slice",
+            "selection_tie_break": "higher coverage, then lower threshold",
+            "grid": selection_curve,
+            "selected_threshold": chosen_threshold,
+            "selection_slice_result": best,
+            "confirmation_slice_result": confirmation_row,
+        }
 
     # Descriptive test probabilities are reported without using test labels to select thresholds.
     x_test = engine.build_dataset(test["MatchID"].tolist())
@@ -221,12 +241,14 @@ def main():
             "threshold_confirmation": {"matches": len(threshold_confirm), "start": str(threshold_confirm["Date"].min().date()), "end": str(threshold_confirm["Date"].max().date())},
         },
         "draw_feature_weights": feature_weight_report(model),
-        "threshold_selection": {
-            "objective": "maximize draw-class F1 on the chronological threshold-selection slice",
-            "grid": selection_curve,
-            "selected_threshold": chosen_threshold,
-            "selection_slice_result": best,
-            "confirmation_slice_result": confirmation_row,
+        "decision_policy_comparison": {
+            "policies": {
+                "argmax_and_threshold": "Select DRAW only when argmax is DRAW and P(DRAW) >= threshold.",
+                "probability_threshold_only": "Select DRAW whenever P(DRAW) >= threshold, regardless of whether DRAW is argmax.",
+            },
+            "probability_model_unchanged": True,
+            "test_data_used_for_policy_selection": False,
+            "results": policy_results,
         },
         "probability_diagnostics": {
             "threshold_selection": summarize_probabilities(y_select, p_select),
