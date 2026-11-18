@@ -273,6 +273,9 @@ def test_prediction_diagnostics_keep_out_of_fold_rows_and_group_error_sources():
         "away_recent_for_10": [1.2, 1.0, 1.5],
         "home_recent_for_15": [1.4, 0.9, 1.7],
         "away_recent_for_15": [1.1, 1.0, 1.4],
+        "lambda_total_recent_5": [2.8, 2.1, 3.4],
+        "lambda_total_recent_10": [2.7, 2.2, 3.2],
+        "lambda_total_recent_15": [2.6, 2.3, 3.1],
     })
     labels = np.array([1, 0, 1], dtype=int)
     probabilities = np.array([0.82, 0.25, 0.61])
@@ -319,6 +322,9 @@ def test_prediction_diagnostics_reject_misaligned_labels():
         "away_recent_for_10": [1.1],
         "home_recent_for_15": [1.2],
         "away_recent_for_15": [1.1],
+        "lambda_total_recent_5": [2.3],
+        "lambda_total_recent_10": [2.4],
+        "lambda_total_recent_15": [2.5],
     })
 
     try:
