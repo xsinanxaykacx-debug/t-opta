@@ -643,22 +643,6 @@ def run_walk_forward(
         p_negative_binomial = negative_binomial_model.predict_proba(validation)
         p_market, over_odds, under_odds, market_valid = market_data(validation)
 
-        prediction_rows.extend(build_prediction_diagnostic_rows(
-            validation,
-            y,
-            {
-                "BLEND_RESEARCH": p_blend,
-                "HISTORICAL_XG": p_historical,
-                "POISSON": p_poisson,
-                "POISSON_CAL": p_poisson_cal,
-                "POISSON_PLATT": p_poisson_platt,
-                "GOAL_POISSON": p_goal_poisson,
-                "XG_GOAL_BLEND": p_xg_goal_blend,
-                "NEGATIVE_BINOMIAL": p_negative_binomial,
-                "HIST_GB": p_hgb,
-            },
-            fold_number,
-        ))
 
         # Calibrated Poisson-only candidate: no bookmaker odds in its features.
         poisson_calibrator = IsotonicRegression(
@@ -676,6 +660,23 @@ def run_walk_forward(
             y_calibration,
             p_poisson,
         )
+
+        prediction_rows.extend(build_prediction_diagnostic_rows(
+            validation,
+            y,
+            {
+                "BLEND_RESEARCH": p_blend,
+                "HISTORICAL_XG": p_historical,
+                "POISSON": p_poisson,
+                "POISSON_CAL": p_poisson_cal,
+                "POISSON_PLATT": p_poisson_platt,
+                "GOAL_POISSON": p_goal_poisson,
+                "XG_GOAL_BLEND": p_xg_goal_blend,
+                "NEGATIVE_BINOMIAL": p_negative_binomial,
+                "HIST_GB": p_hgb,
+            },
+            fold_number,
+        ))
 
         # Compare the market-dependent research blend with the production
         # historical-only model on identical rows where market prices exist.
