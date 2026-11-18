@@ -54,6 +54,10 @@ MIN_POLICY_CHECK_BETS = 50
 MIN_POLICY_CHECK_HIT_RATE = 0.65
 MIN_POLICY_CHECK_ROI = 0.0
 
+# Current validation/final slices have prior exploratory overlap; keep both closed.
+POLICY_CHECK_CLEAN = False
+FINAL_HOLDOUT_CLEAN = False
+
 RANDOM_SEED = 42
 
 
@@ -1300,6 +1304,18 @@ def main(path):
                 f"{MIN_POLICY_CHECK_BETS} bets, hit rate >= {MIN_POLICY_CHECK_HIT_RATE:.0%}, "
                 f"and ROI > {MIN_POLICY_CHECK_ROI:.1f}%."
             )
+
+    # The validation check was explored during research and is no longer an untouched gate.
+    if not POLICY_CHECK_CLEAN:
+        print("\nPOLICY CHECK NOT CLEAN — obtain a fresh chronological validation slice.")
+        print(f"Validation diagnostics saved: {output_dir.resolve()}")
+        return
+
+    # The legacy script previously scored an overlapping period in this CSV.
+    if not FINAL_HOLDOUT_CLEAN:
+        print("\nFINAL TEST SEALED — current CSV overlaps a legacy scored period. Supply fresh post-2026-03-14 data.")
+        print(f"Validation diagnostics saved: {output_dir.resolve()}")
+        return
 
     # Do not open or score the final holdout until the frozen policy passes.
     if not policy_passed:
