@@ -75,6 +75,7 @@ def _score_row(
     mask: np.ndarray,
     model_name: str,
     fold: int,
+    scope: str = "VALID_MARKET",
 ) -> dict:
     selected_y = y[mask]
     selected_p = np.clip(probabilities[mask], 1e-6, 1.0 - 1e-6)
@@ -84,6 +85,7 @@ def _score_row(
     return {
         "fold": fold,
         "model": model_name,
+        "scope": scope,
         "matches": int(len(selected_y)),
         "accuracy": float(((selected_p >= 0.5).astype(int) == selected_y).mean()),
         "brier": float(brier_score_loss(selected_y, selected_p)),
@@ -164,6 +166,7 @@ def calculate_confidence_rows(
     model_name: str,
     fold: int,
     cutoffs: tuple[float, ...] = (0.55, 0.60, 0.65, 0.70, 0.75, 0.80),
+    scope: str = "VALID_MARKET",
 ) -> list[dict]:
     """Measure selective accuracy when the system abstains on low confidence."""
     rows = []
@@ -175,6 +178,7 @@ def calculate_confidence_rows(
         rows.append({
             "fold": fold,
             "model": model_name,
+            "scope": scope,
             "confidence_cutoff": float(cutoff),
             "matches": count,
             "coverage": float(count / len(y)) if len(y) else 0.0,
@@ -228,6 +232,9 @@ def run_walk_forward(
     oof = {
         "y": [], "model": [], "market": [], "poisson": [],
         "poisson_cal": [], "xg_logistic": [],
+    }
+    oof_all = {
+        "y": [], "poisson": [], "poisson_cal": [], "xg_logistic": [],
     }
 
     for fold_number, (train_slice, calibration_slice, validation_slice) in enumerate(windows, 1):
@@ -289,6 +296,9 @@ def run_walk_forward(
             _score_row(y, p_poisson, market_valid, "POISSON", fold_number),
             _score_row(y, p_poisson_cal, market_valid, "POISSON_CAL", fold_number),
             _score_row(y, p_xg_logistic, market_valid, "XG_LOGISTIC_CAL", fold_number),
+            _score_row(y, p_poisson, np.ones(len(y), dtype=bool), "POISSON", fold_number, "ALL_MATCHES"),
+            _score_row(y, p_poisson_cal, np.ones(len(y), dtype=bool), "POISSON_CAL", fold_number, "ALL_MATCHES"),
+            _score_row(y, p_xg_logistic, np.ones(len(y), dtype=bool), "XG_LOGISTIC_CAL", fold_number, "ALL_MATCHES"),
         ])
 
         for model_name, probabilities in (
@@ -303,6 +313,19 @@ def run_walk_forward(
                 probabilities[market_valid],
                 model_name,
                 fold_number,
+            ))
+
+        for model_name, probabilities in (
+            ("POISSON", p_poisson),
+            ("POISSON_CAL", p_poisson_cal),
+            ("XG_LOGISTIC_CAL", p_xg_logistic),
+        ):
+            confidence_rows.extend(calculate_confidence_rows(
+                y,
+                probabilities,
+                model_name,
+                fold_number,
+                scope="ALL_MATCHES",
             ))
 
         for model_name, probabilities in (
@@ -331,6 +354,10 @@ def run_walk_forward(
         oof["poisson_cal"].extend(p_poisson_cal[valid_indices].tolist())
         oof["xg_logistic"].extend(p_xg_logistic[valid_indices].tolist())
         oof["valid"].extend([True] * len(valid_indices))
+        oof_all["y"].extend(y.tolist())
+        oof_all["poisson"].extend(p_poisson.tolist())
+        oof_all["poisson_cal"].extend(p_poisson_cal.tolist())
+        oof_all["xg_logistic"].extend(p_xg_logistic.tolist())
 
         print(
             f"Fold {fold_number:02d}: train={len(train)} "
@@ -348,6 +375,14 @@ def run_walk_forward(
         _score_row(y_all, np.asarray(oof["xg_logistic"]), all_mask, "XG_LOGISTIC_CAL", 0),
     ])
 
+    y_all_matches = np.asarray(oof_all["y"], dtype=int)
+    all_match_mask = np.ones(len(y_all_matches), dtype=bool)
+    metric_rows.extend([
+        _score_row(y_all_matches, np.asarray(oof_all["poisson"]), all_match_mask, "POISSON", 0, "ALL_MATCHES"),
+        _score_row(y_all_matches, np.asarray(oof_all["poisson_cal"]), all_match_mask, "POISSON_CAL", 0, "ALL_MATCHES"),
+        _score_row(y_all_matches, np.asarray(oof_all["xg_logistic"]), all_match_mask, "XG_LOGISTIC_CAL", 0, "ALL_MATCHES"),
+    ])
+
     metrics = pd.DataFrame(metric_rows)
     policies = pd.DataFrame(policy_rows)
 
@@ -363,6 +398,19 @@ def run_walk_forward(
             probabilities,
             model_name,
             0,
+        ))
+
+    for model_name, probabilities in (
+        ("POISSON", np.asarray(oof_all["poisson"], dtype=float)),
+        ("POISSON_CAL", np.asarray(oof_all["poisson_cal"], dtype=float)),
+        ("XG_LOGISTIC_CAL", np.asarray(oof_all["xg_logistic"], dtype=float)),
+    ):
+        confidence_rows.extend(calculate_confidence_rows(
+            y_all_matches,
+            probabilities,
+            model_name,
+            0,
+            scope="ALL_MATCHES",
         ))
 
     confidence = pd.DataFrame(confidence_rows)
