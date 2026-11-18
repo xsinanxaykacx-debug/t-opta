@@ -134,3 +134,10 @@ def test_policy_gate_rejects_small_samples():
 def test_policy_gate_accepts_only_validated_positive_policy():
     results = pd.DataFrame([{"bets": 80, "hit": 0.70, "roi": 2.0}])
     assert BOT.policy_check_passes(results) is True
+
+
+def test_final_holdout_stays_closed_when_validation_or_holdout_is_not_clean():
+    assert BOT.POLICY_CHECK_CLEAN is False
+    assert BOT.FINAL_HOLDOUT_CLEAN is False
+    assert BOT.final_test_is_openable(policy_passed=True) is False
+    assert BOT.final_test_is_openable(policy_passed=False) is False
