@@ -1079,6 +1079,20 @@ def select_edge_threshold(results):
     )
 
 
+def policy_check_passes(results):
+    """Keep the final holdout sealed unless the policy survives validation."""
+    if results is None or results.empty:
+        return False
+    row = results.iloc[0]
+    return bool(
+        row["bets"] >= MIN_POLICY_CHECK_BETS
+        and np.isfinite(row["hit"])
+        and np.isfinite(row["roi"])
+        and row["hit"] >= MIN_POLICY_CHECK_HIT_RATE
+        and row["roi"] > MIN_POLICY_CHECK_ROI
+    )
+
+
 # ============================================================
 # 10. ANA AKIŞ
 # ============================================================
@@ -1268,6 +1282,7 @@ def main(path):
         model
     )
 
+    policy_passed = False
     if chosen_threshold is not None:
 
         check_results = value_bet_analysis(
@@ -1278,6 +1293,19 @@ def main(path):
         )
         check_results.to_csv(output_dir / "edge_report_policy_check.csv", index=False)
         save_diagnostics(policy_check, model, "policy_check", output_dir, chosen_threshold)
+        policy_passed = policy_check_passes(check_results)
+        if not policy_passed:
+            print(
+                "\nPOLICY RED: validation must have at least "
+                f"{MIN_POLICY_CHECK_BETS} bets, hit rate >= {MIN_POLICY_CHECK_HIT_RATE:.0%}, "
+                f"and ROI > {MIN_POLICY_CHECK_ROI:.1f}%."
+            )
+
+    # Do not open or score the final holdout until the frozen policy passes.
+    if not policy_passed:
+        print("\nFINAL TEST SEALED — NO BET. Continue development on train/validation only.")
+        print(f"Validation diagnostics saved: {output_dir.resolve()}")
+        return
 
     # --------------------------------------------------------
     # Final test
