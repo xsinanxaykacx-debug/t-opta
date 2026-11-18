@@ -139,5 +139,14 @@ def test_policy_gate_accepts_only_validated_positive_policy():
 def test_final_holdout_stays_closed_when_validation_or_holdout_is_not_clean():
     assert BOT.POLICY_CHECK_CLEAN is False
     assert BOT.FINAL_HOLDOUT_CLEAN is False
-    assert BOT.final_test_is_openable(policy_passed=True) is False
-    assert BOT.final_test_is_openable(policy_passed=False) is False
+    old_test = pd.DataFrame({"Date": pd.to_datetime(["2026-03-14T23:00:00Z"], utc=True)})
+    fresh_test = pd.DataFrame({"Date": pd.to_datetime(["2026-03-15T00:00:00Z"], utc=True)})
+    assert BOT.final_test_is_openable(policy_passed=True, test_df=old_test) is False
+    assert BOT.final_test_is_openable(policy_passed=True, test_df=fresh_test) is False
+
+
+def test_freshness_guard_requires_dates_after_legacy_scored_period():
+    old_test = pd.DataFrame({"Date": pd.to_datetime(["2026-03-14T23:00:00Z"], utc=True)})
+    fresh_test = pd.DataFrame({"Date": pd.to_datetime(["2026-03-15T00:00:00Z"], utc=True)})
+    assert BOT.final_holdout_is_fresh(old_test) is False
+    assert BOT.final_holdout_is_fresh(fresh_test) is True
