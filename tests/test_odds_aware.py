@@ -4,7 +4,7 @@ import pandas as pd
 from experiments.odds_aware import OddsAwareModel
 
 
-def _frame(n: int = 240) -> pd.DataFrame:
+def _frame(n: int = 360) -> pd.DataFrame:
     index = np.arange(n)
     p_poisson = 0.25 + 0.5 * ((index % 17) / 16)
     over = np.where(index % 2 == 0, 1.75, 2.15)
@@ -26,16 +26,16 @@ def _frame(n: int = 240) -> pd.DataFrame:
 def test_odds_aware_model_fits_calibrates_and_predicts_probabilities():
     frame = _frame()
     model = OddsAwareModel().fit(frame.iloc[:160])
-    model.calibrate(frame.iloc[160:210])
-    probabilities = model.predict_proba(frame.iloc[210:])
+    model.calibrate(frame.iloc[160:260])
+    probabilities = model.predict_proba(frame.iloc[260:])
 
     assert model.is_fitted is True
     assert model.is_calibrated is True
-    assert probabilities.shape == (30,)
+    assert probabilities.shape == (100,)
     assert np.isfinite(probabilities).all()
     assert ((probabilities > 0.0) & (probabilities < 1.0)).all()
 
-    prediction_frame = frame.iloc[210:].copy()
+    prediction_frame = frame.iloc[260:].copy()
     before = model.predict_proba(prediction_frame)
     prediction_frame["odds_AvgC>2.5"] = 1.01
     prediction_frame["odds_B365C<2.5"] = 99.0
