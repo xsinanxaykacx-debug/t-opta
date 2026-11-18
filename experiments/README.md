@@ -76,8 +76,8 @@ Raw counts and effective counts are both recorded in the split manifest.
    least 10 fixtures and at least 65% hit rate.
 5. The sealed FINAL_TEST requires at least 100 selected fixtures and at least
    65% hit rate for a READY result.
-5. If POLICY_CHECK fails, FINAL_TEST is not opened.
-6. If POLICY_CHECK passes, evaluate all three frozen models once on FINAL_TEST.
+6. If POLICY_CHECK fails, FINAL_TEST is not opened.
+7. If POLICY_CHECK passes, evaluate all three frozen models once on FINAL_TEST.
    FINAL_TEST never selects a model, threshold, feature, or calibration method.
 
 The experiment writes `model_metrics.csv`, `directional_roi.csv`,
