@@ -95,3 +95,10 @@ def test_team_history_is_scoped_to_target_league(tmp_path):
     # The L2 match for a same-named team must not contaminate L1 history.
     assert features["home_xg_for_avg_5"] == 1.0
     assert features["h2h_home_goals_avg"] == 2.0
+
+
+def test_ewma_weights_most_recent_match_more_heavily():
+    # FeatureEngine receives histories newest-first from HistoricalEngine.
+    value = FeatureEngine._ewma(pd.Series([5.0, 1.0]), span=2)
+    expected = pd.Series([1.0, 5.0]).ewm(span=2, adjust=False).mean().iloc[-1]
+    assert value == expected
