@@ -165,7 +165,7 @@ class HistoricalEngine:
         before_date,
         league: str | None = None,
     ) -> pd.DataFrame:
-        """Return prior head-to-head matches in the target league only."""
+        """Return prior head-to-head matches, optionally scoped to a league."""
         if not isinstance(away_team, str) or not away_team.strip():
             raise ValueError("away_team must be a non-empty string.")
         history = self.get_team_history(home_team, before_date, league=league)
