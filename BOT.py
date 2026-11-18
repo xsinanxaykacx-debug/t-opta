@@ -634,18 +634,30 @@ class HistoricalXGModel(BlendModel):
 
     @staticmethod
     def _X(df):
-        required = ("lambda_home", "lambda_away", "p_poisson")
+        required = (
+            "lambda_home",
+            "lambda_away",
+            "p_poisson",
+            "home_for_mean",
+            "home_against_mean",
+            "away_for_mean",
+            "away_against_mean",
+            "home_recent_for",
+            "home_recent_against",
+            "away_recent_for",
+            "away_recent_against",
+            "league_average",
+            "home_advantage",
+            "home_history_count",
+            "away_history_count",
+        )
         missing = [column for column in required if column not in df.columns]
         if missing:
             raise ValueError(
                 "Historical XG features missing: " + ", ".join(missing)
             )
 
-        X = np.column_stack([
-            df["lambda_home"].to_numpy(dtype=float),
-            df["lambda_away"].to_numpy(dtype=float),
-            df["p_poisson"].to_numpy(dtype=float),
-        ])
+        X = df.loc[:, required].to_numpy(dtype=float)
 
         return np.nan_to_num(
             X,
