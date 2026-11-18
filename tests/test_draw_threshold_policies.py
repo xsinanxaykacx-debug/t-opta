@@ -58,3 +58,46 @@ def test_threshold_selection_has_deterministic_tie_break():
 def test_unknown_policy_is_rejected():
     with np.testing.assert_raises(ValueError):
         draw_threshold_curve(np.array([1]), np.array([[0.2, 0.5, 0.3]]), "unknown")
+
+
+def test_coverage_curve_uses_selection_cutoff_and_reports_metrics():
+    from scripts.analyze_draw_diagnostics import coverage_precision_recall_curve
+
+    labels = np.array([1, 0, 1, 2, 0, 1, 2, 0, 1, 2])
+    draw_p = np.array([0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.05])
+    probabilities = np.column_stack([1 - draw_p, draw_p, np.zeros_like(draw_p)])
+
+    row = coverage_precision_recall_curve(labels, probabilities, [0.20])[0]
+
+    assert row["threshold"] == 0.8
+    assert row["selected_matches"] == 2
+    assert row["coverage"] == 0.2
+    assert row["true_positives"] == 1
+    assert row["false_positives"] == 1
+    assert row["draw_precision"] == 0.5
+    assert row["draw_recall"] == 0.25
+
+
+def test_coverage_curve_includes_all_matches_tied_at_cutoff():
+    from scripts.analyze_draw_diagnostics import coverage_precision_recall_curve
+
+    labels = np.array([1, 0, 1, 2])
+    draw_p = np.array([0.8, 0.8, 0.4, 0.1])
+    probabilities = np.column_stack([1 - draw_p, draw_p, np.zeros_like(draw_p)])
+
+    row = coverage_precision_recall_curve(labels, probabilities, [0.25])[0]
+
+    assert row["threshold"] == 0.8
+    assert row["selected_matches"] == 2
+    assert row["coverage"] == 0.5
+    assert row["target_coverage"] == 0.25
+
+
+def test_coverage_curve_rejects_invalid_targets():
+    from scripts.analyze_draw_diagnostics import coverage_precision_recall_curve
+
+    labels = np.array([1])
+    probabilities = np.array([[0.2, 0.5, 0.3]])
+
+    with np.testing.assert_raises(ValueError):
+        coverage_precision_recall_curve(labels, probabilities, [0.0])
