@@ -57,8 +57,8 @@ jobs:
           walk_forward_count=$(find reports/walk_forward -maxdepth 1 -type f -name '*.csv' | wc -l)
           echo "Diagnostic CSV reports: $diagnostics_count"
           echo "Walk-forward CSV reports: $walk_forward_count"
-          if [ "$diagnostics_count" -lt 5 ] || [ "$walk_forward_count" -lt 2 ]; then
-            echo "::error::Expected five diagnostics CSVs and two walk-forward CSVs."
+          if [ "$diagnostics_count" -lt 5 ] || [ "$walk_forward_count" -lt 3 ]; then
+            echo "::error::Expected five diagnostics CSVs and three walk-forward CSVs."
             find reports -maxdepth 3 -type f -print || true
             exit 1
           fi
