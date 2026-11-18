@@ -300,7 +300,8 @@ def validate_partition_dates(
 
 def assert_final_test_sealed(requested_partitions: Sequence[str]) -> None:
     """Reject any fitting/selection operation that requests FINAL_TEST."""
-    forbidden = SEALED_PARTITIONS.intersection(requested_partitions)
+    normalised = {str(partition).strip().casefold() for partition in requested_partitions}
+    forbidden = SEALED_PARTITIONS.intersection(normalised)
     if forbidden:
         raise ProtocolError(
             "FINAL_TEST is sealed and cannot be used for fitting, feature "
