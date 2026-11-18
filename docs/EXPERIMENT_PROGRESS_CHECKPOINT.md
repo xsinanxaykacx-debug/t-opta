@@ -217,3 +217,14 @@ Updated pooled flat-stake edge ROI across the 10 OOF folds:
 4. Validate the upcoming-fixture CLI with a realistic upcoming CSV and check date parsing, timezone semantics, missing history, duplicate fixtures, and no-result leakage.
 5. Keep odds provenance unresolved until the exact original odds source/file lineage and timestamp are documented; primary predictions remain odds-independent.
 6. Continue improving the model and evaluate on chronological data without tuning on POLICY CHECK. Do not open or use Final Test until the model/policy is frozen and the agreed merge gate is met.
+
+
+### Follow-up: tests #210 completed after the checkpoint append
+
+- Tests workflow #210 (`44343017268`) has now completed **FAILURE** on commit `ae3fb2c7a6f22107a784951b9b24d24e1bb407c3`.
+- Result: **69 passed, 1 failed** (291.66 seconds).
+- Sole failure: `tests/test_walk_forward_over_under.py::test_walk_forward_folds_are_expanding_and_chronological`.
+- Root cause in the test assertion, not yet fixed: it calls `len(train)` where `train` is a Python `slice`; Python slices do not implement `len()`. The assertion should check `train.stop - train.start >= 5000` (or equivalent) while preserving the intended chronological fold assertions.
+- Seven warnings were emitted (including pandas concat FutureWarnings and scikit-learn penalty deprecation); they did not fail the run.
+- Next step: correct the slice-length assertion on the development branch, rerun pytest, then rerun diagnostics if any model/report code changes. Do not mark tests green until a new run succeeds.
+- Checkpoint update commit: `54b929a25669861cf748a5e6a39bc5628c17be3b` (this is the current branch HEAD after saving this checkpoint). Main has not been merged or modified by this checkpoint operation.
