@@ -149,3 +149,27 @@ Updated pooled flat-stake edge ROI across the 10 OOF folds:
 - Tests workflow run #181: `44340587891`, commit `9e855f81...`; status IN_PROGRESS when this checkpoint was updated. It includes the walk-forward unit tests and same-calendar-day isolation test. Verify final conclusion.
 - Diagnostics workflow run #13: `44340587905`; SUCCESS.
 - Main remains unchanged; no merge has occurred.
+
+
+## Odds provenance and production-feature restriction
+
+- Current `xgo.csv` contains non-C fields such as `odds_Avg>2.5` / `odds_B365>2.5` and separate C-suffixed variants. `market_data()` reads only the non-C fields; it has regression tests proving it never falls back to AvgC/B365C closing prices.
+- Official Football-Data documentation says that since 2019/20 it collects an early set after market opening and a second closing set whose column names include `C`. This is the naming convention, but it does not prove that this particular `xgo.csv` odds data came from Football-Data.
+- Earlier project records mention Maçkolik as an odds/results source; the exact original odds CSV filename, source lineage and collection timestamp for the odds columns in `xgo.csv` remain unverified.
+- Therefore non-C odds are still treated as research/benchmark data only. Do not claim their ROI or availability as production-valid until the exact xgo odds provenance and prediction-time collection schedule are confirmed.
+- Primary bot model has now been changed to `PoissonOnlyModel`, which predicts exclusively from leakage-safe historical `p_poisson`. It does not read bookmaker odds. `BlendModel` remains only as a research comparator; `HistoricalXGModel` remains an experimental historical-only logistic candidate.
+- A fixed 0.75 confidence policy report was added for POLICY SELECT and POLICY CHECK. This cutoff was motivated by the TRAIN-only walk-forward OOF results; do not retune it against POLICY CHECK. Final Test remains sealed.
+
+## Latest primary-model experiment
+
+- `PoissonOnlyModel` became the main BOT model in commit `ee8f9318369ecefe2796a22ce6b3060669b979fc`.
+- The expanded historical-xG logistic candidate uses cumulative and last-five-match xG-for/xG-against features, league scoring baseline, home advantage and history counts. All features are updated only after the full UTC calendar day has been predicted.
+- On the 10-fold TRAIN-only OOF comparison, raw Poisson remained stronger than the fitted historical-xG logistic candidate:
+  - POISSON all-match accuracy: 57.63% (3,000 fixtures), Brier 0.244465.
+  - HISTORICAL_XG all-match accuracy: 56.33% (3,000 fixtures), Brier 0.247172.
+  - POISSON confidence >=0.75: 123 picks, 71.54% accuracy, 4.10% coverage.
+  - POISSON confidence >=0.70: 374 picks, 68.18% accuracy, 12.47% coverage.
+  - These are development OOF results, not final production claims; confidence intervals are wide and fold-level variance remains.
+- Latest completed diagnostics before the fixed-confidence-report change: run #26 `44342029767`, SUCCESS. The primary model's 300-match POLICY CHECK accuracy at the ordinary 0.50 cutoff was 50.67%; this is not the confidence-gated result.
+- Current fixed-confidence workflow run #27: `44342342641`, status IN_PROGRESS when this checkpoint was updated. Verify the printed 0.75 POLICY SELECT / POLICY CHECK counts and hit rates.
+- Latest tests run #197: `44342342643`, status PENDING when this checkpoint was updated.
