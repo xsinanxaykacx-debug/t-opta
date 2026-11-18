@@ -1,6 +1,7 @@
 import numpy as np
 
 from scripts.walk_forward_over_under import (
+    HistGradientBoostingCandidate,
     build_fold_slices,
     calculate_policy_rows,
 )
@@ -92,3 +93,42 @@ def test_walk_forward_fold_builder_rejects_insufficient_history():
         assert "Not enough development rows" in str(exc)
     else:
         raise AssertionError("Expected insufficient history to be rejected.")
+
+
+
+def test_hist_gradient_boosting_candidate_is_odds_independent_and_calibrated():
+    import pandas as pd
+
+    rng = np.random.default_rng(42)
+    feature_names = (
+        "lambda_home", "lambda_away", "p_poisson",
+        "home_for_mean", "home_against_mean",
+        "away_for_mean", "away_against_mean",
+        "home_recent_for", "home_recent_against",
+        "away_recent_for", "away_recent_against",
+        "league_average", "home_advantage",
+        "home_history_count", "away_history_count",
+    )
+
+    def make_frame(size, offset):
+        signal = np.linspace(0.0, 1.0, size, endpoint=False) + offset
+        labels = (np.arange(size) % 2).astype(int)
+        values = {
+            name: (0.5 + signal if "lambda" in name or "mean" in name else signal)
+            for name in feature_names
+        }
+        values["FTHG"] = np.where(labels == 1, 2, 1)
+        values["FTAG"] = np.where(labels == 1, 1, 0)
+        return pd.DataFrame(values)
+
+    train = make_frame(240, 0.0)
+    calibration = make_frame(120, 0.03)
+    validation = make_frame(40, 0.07)
+
+    model = HistGradientBoostingCandidate().fit(train).calibrate(calibration)
+    probabilities = model.predict_proba(validation)
+
+    assert len(probabilities) == len(validation)
+    assert np.isfinite(probabilities).all()
+    assert ((probabilities > 0.0) & (probabilities < 1.0)).all()
+    assert not any(column.startswith("odds_") for column in train.columns)
