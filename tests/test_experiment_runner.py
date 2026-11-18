@@ -2,7 +2,10 @@ import numpy as np
 import pandas as pd
 
 from experiments.comparison import purge_same_calendar_day_boundaries
-from experiments.history_features import add_xg18_historical_features
+from experiments.history_features import (
+    _add_poisson_features,
+    add_xg18_historical_features,
+)
 from validation.experiment_protocol import PARTITION_ORDER
 
 
@@ -75,3 +78,27 @@ def test_policy_selection_prefers_hit_rate_when_minimum_sample_is_met():
     assert selected["bets"] == 50
     assert selected["hit_rate"] == 1.0
     assert selected["threshold"] > 0.6
+
+
+
+def test_poisson_ewma_falls_back_to_historical_average_before_default():
+    frame = pd.DataFrame(
+        {
+            "hist_home_xg_for_ewma_5": [np.nan],
+            "hist_home_xg_for_avg_5": [2.0],
+            "hist_home_xg_against_ewma_5": [np.nan],
+            "hist_home_xg_against_avg_5": [1.1],
+            "hist_away_xg_for_ewma_5": [np.nan],
+            "hist_away_xg_for_avg_5": [1.4],
+            "hist_away_xg_against_ewma_5": [np.nan],
+            "hist_away_xg_against_avg_5": [1.7],
+        }
+    )
+
+    result = _add_poisson_features(frame)
+
+    expected_home = np.sqrt(2.0 * 1.7) * 1.05
+    expected_away = np.sqrt(1.4 * 1.1) / 1.05
+    assert np.isclose(result.loc[0, "hist_lambda_home"], expected_home)
+    assert np.isclose(result.loc[0, "hist_lambda_away"], expected_away)
+    assert 0.0 < result.loc[0, "p_poisson"] < 1.0
