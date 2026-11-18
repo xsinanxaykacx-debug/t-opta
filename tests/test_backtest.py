@@ -74,10 +74,10 @@ def test_backtest_applies_explicit_decision_function(backtest_inputs):
     assert report["bet_coverage_ratio"] == 1.0
 
 
-def test_backtest_rejects_calendar_day_overlap(backtest_inputs):
+def test_backtest_rejects_noncanonical_partition_date(backtest_inputs):
     engine, train, calibration, test = backtest_inputs
     calibration.loc[calibration.index[0], "Date"] = "2024-01-08T20:00:00Z"
-    with pytest.raises(ValueError, match="Train must end before calibration"):
+    with pytest.raises(ValueError, match="Date mismatch"):
         HistoricalBacktester(engine, TinyAdapter()).run_backtest(
             train, calibration, test
         )
