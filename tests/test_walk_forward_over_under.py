@@ -2,6 +2,7 @@ import numpy as np
 
 from scripts.walk_forward_over_under import (
     HistGradientBoostingCandidate,
+    LogisticOverUnderCandidate,
     NegativeBinomialCandidate,
     build_odds_provenance_report,
     platt_scale_probabilities,
@@ -325,3 +326,46 @@ def test_prediction_diagnostics_reject_misaligned_labels():
         assert "aligned validation rows" in str(exc)
     else:
         raise AssertionError("Expected misaligned labels to be rejected.")
+
+
+def test_logistic_over_under_candidate_uses_train_only_selection_and_calibration():
+    import pandas as pd
+
+    rng = np.random.default_rng(17)
+    feature_names = (
+        "lambda_home", "lambda_away", "p_poisson",
+        "home_for_mean", "home_against_mean",
+        "away_for_mean", "away_against_mean",
+        "home_recent_for", "home_recent_against",
+        "away_recent_for", "away_recent_against",
+        "home_recent_for_10", "home_recent_against_10",
+        "away_recent_for_10", "away_recent_against_10",
+        "home_recent_for_15", "home_recent_against_15",
+        "away_recent_for_15", "away_recent_against_15",
+        "league_average", "home_advantage",
+        "home_history_count", "away_history_count",
+    )
+
+    def make_frame(size, start):
+        labels = (np.arange(size) % 2).astype(int)
+        values = {
+            name: rng.normal(1.5, 0.3, size)
+            for name in feature_names
+        }
+        values["Date"] = pd.date_range(start, periods=size, freq="D", tz="UTC")
+        values["FTHG"] = np.where(labels == 1, 2, 1)
+        values["FTAG"] = np.where(labels == 1, 1, 0)
+        return pd.DataFrame(values)
+
+    train = make_frame(240, "2022-01-01")
+    calibration = make_frame(100, "2023-01-01")
+    validation = make_frame(30, "2023-05-01")
+
+    model = LogisticOverUnderCandidate().fit(train).calibrate(calibration)
+    probabilities = model.predict_proba(validation)
+
+    assert model.best_c in model.C_GRID
+    assert set(model.validation_scores) == set(model.C_GRID)
+    assert len(probabilities) == len(validation)
+    assert np.isfinite(probabilities).all()
+    assert ((probabilities > 0.0) & (probabilities < 1.0)).all()
