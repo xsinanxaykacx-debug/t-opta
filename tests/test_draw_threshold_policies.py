@@ -101,3 +101,44 @@ def test_coverage_curve_rejects_invalid_targets():
 
     with np.testing.assert_raises(ValueError):
         coverage_precision_recall_curve(labels, probabilities, [0.0])
+
+
+
+def test_league_diagnostics_uses_one_fixed_global_threshold_and_reports_base_rate():
+    import pandas as pd
+    from scripts.analyze_draw_diagnostics import league_draw_diagnostics
+
+    frame = pd.DataFrame({"League": ["A", "A", "B", "B"]})
+    labels = np.array([1, 0, 0, 1])
+    probabilities = np.array([
+        [0.30, 0.50, 0.20],
+        [0.40, 0.40, 0.20],
+        [0.50, 0.30, 0.20],
+        [0.20, 0.60, 0.20],
+    ])
+
+    rows = league_draw_diagnostics(frame, labels, probabilities, 0.45)
+    by_league = {row["league"]: row for row in rows}
+
+    assert by_league["A"]["matches"] == 2
+    assert by_league["A"]["actual_draw_rate"] == 0.5
+    assert by_league["A"]["mean_p_draw"] == 0.45
+    assert by_league["A"]["selected_matches"] == 1
+    assert by_league["A"]["draw_precision"] == 1.0
+    assert by_league["B"]["matches"] == 2
+    assert by_league["B"]["selected_matches"] == 1
+    assert by_league["A"]["sample_reliability"] == "small_sample_caution"
+    assert by_league["B"]["fixed_global_threshold"] == 0.45
+
+
+def test_league_diagnostics_rejects_misaligned_inputs():
+    import pandas as pd
+    from scripts.analyze_draw_diagnostics import league_draw_diagnostics
+
+    with np.testing.assert_raises(ValueError):
+        league_draw_diagnostics(
+            pd.DataFrame({"League": ["A"]}),
+            np.array([1, 0]),
+            np.array([[0.2, 0.5, 0.3], [0.3, 0.4, 0.3]]),
+            0.4,
+        )
