@@ -151,6 +151,32 @@ def calculate_policy_rows(
     return rows
 
 
+def calculate_confidence_rows(
+    y: np.ndarray,
+    probabilities: np.ndarray,
+    model_name: str,
+    fold: int,
+    cutoffs: tuple[float, ...] = (0.55, 0.60, 0.65, 0.70, 0.75, 0.80),
+) -> list[dict]:
+    """Measure selective accuracy when the system abstains on low confidence."""
+    rows = []
+    confidence = np.maximum(probabilities, 1.0 - probabilities)
+    predicted = (probabilities >= 0.5).astype(int)
+    for cutoff in cutoffs:
+        selected = confidence >= cutoff
+        count = int(selected.sum())
+        rows.append({
+            "fold": fold,
+            "model": model_name,
+            "confidence_cutoff": float(cutoff),
+            "matches": count,
+            "coverage": float(count / len(y)) if len(y) else 0.0,
+            "accuracy": float((predicted[selected] == y[selected]).mean()) if count else np.nan,
+            "mean_confidence": float(confidence[selected].mean()) if count else np.nan,
+        })
+    return rows
+
+
 def load_development_data(path: str | Path) -> pd.DataFrame:
     """Load and clean history, then cap it before feature generation."""
     frame = pd.read_csv(path, encoding="latin-1", low_memory=False)
@@ -183,7 +209,7 @@ def load_development_data(path: str | Path) -> pd.DataFrame:
 def run_walk_forward(
     csv_path: str | Path,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR,
-    thresholds: tuple[float, ...] = (0.03, 0.05, 0.08, 0.10),
+    thresholds: tuple[float, ...] = (0.03, 0.05, 0.08, 0.10, 0.12, 0.15, 0.20),
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     frame = load_development_data(csv_path)
     frame = add_leakage_safe_features(frame)
@@ -191,6 +217,7 @@ def run_walk_forward(
 
     metric_rows = []
     policy_rows = []
+    confidence_rows = []
     oof = {"y": [], "model": [], "market": [], "poisson": [], "valid": []}
 
     for fold_number, (train_slice, calibration_slice, validation_slice) in enumerate(windows, 1):
@@ -213,6 +240,18 @@ def run_walk_forward(
             _score_row(y, p_market, market_valid, "MARKET", fold_number),
             _score_row(y, p_poisson, market_valid, "POISSON", fold_number),
         ])
+
+        for model_name, probabilities in (
+            ("BLEND", p_model),
+            ("MARKET", p_market),
+            ("POISSON", p_poisson),
+        ):
+            confidence_rows.extend(calculate_confidence_rows(
+                y[market_valid],
+                probabilities[market_valid],
+                model_name,
+                fold_number,
+            ))
 
         for threshold in thresholds:
             policy_rows.extend(calculate_policy_rows(
@@ -250,15 +289,32 @@ def run_walk_forward(
     metrics = pd.DataFrame(metric_rows)
     policies = pd.DataFrame(policy_rows)
 
+    for model_name, probabilities in (
+        ("BLEND", np.asarray(oof["model"], dtype=float)),
+        ("MARKET", np.asarray(oof["market"], dtype=float)),
+        ("POISSON", np.asarray(oof["poisson"], dtype=float)),
+    ):
+        confidence_rows.extend(calculate_confidence_rows(
+            y_all,
+            probabilities,
+            model_name,
+            0,
+        ))
+
+    confidence = pd.DataFrame(confidence_rows)
+
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     metrics.to_csv(output_dir / "walk_forward_metrics.csv", index=False, encoding="utf-8-sig")
     policies.to_csv(output_dir / "walk_forward_policy_roi.csv", index=False, encoding="utf-8-sig")
+    confidence.to_csv(output_dir / "walk_forward_confidence.csv", index=False, encoding="utf-8-sig")
 
     print("\nOOF metrics (fold=0 is pooled out-of-fold):")
     print(metrics.loc[metrics["fold"] == 0].to_string(index=False))
+    print("\nOOF selective accuracy (fold=0 is pooled out-of-fold):")
+    print(confidence.loc[confidence["fold"] == 0].to_string(index=False))
     print(f"\nReports saved to: {output_dir.resolve()}")
-    return metrics, policies
+    return metrics, policies, confidence
 
 
 def main() -> int:
