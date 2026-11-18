@@ -72,6 +72,9 @@ def test_confidence_report_measures_selective_accuracy_and_coverage():
     assert by_cutoff[0.60]["matches"] == 2
     assert np.isclose(by_cutoff[0.60]["coverage"], 0.5)
     assert np.isclose(by_cutoff[0.60]["accuracy"], 1.0)
+    assert by_cutoff[0.60]["top_n_matches"] == 2
+    assert by_cutoff[0.60]["top_n_correct"] == 2
+    assert np.isclose(by_cutoff[0.60]["top_n_accuracy"], 1.0)
     assert by_cutoff[0.80]["matches"] == 2
     assert np.isclose(by_cutoff[0.80]["mean_confidence"], 0.90)
 
