@@ -41,6 +41,7 @@ class HistoricalEngine:
         self.data = self._load_data()
         self.df = self.data  # Backwards-compatible alias; treat as read-only.
         self._team_index = self._build_team_index()
+        self._match_index = self.data.set_index("MatchID", drop=False)
 
     def _load_data(self) -> pd.DataFrame:
         frame = pd.read_csv(self.data_path, encoding="utf-8-sig")
