@@ -115,3 +115,23 @@ def test_recent_xg_windows_use_only_prior_matches_and_keep_window_lengths():
             target[f"lambda_total_recent_{window}"],
             target[f"lambda_home_recent_{window}"] + target[f"lambda_away_recent_{window}"],
         )
+
+
+def test_away_side_recent_xg_windows_retain_fifteen_prior_matches():
+    frame = pd.DataFrame({
+        "Date": pd.date_range("2024-01-01", periods=17, freq="7D", tz="UTC"),
+        "League": ["L1"] * 17,
+        "HomeTeam": [f"OPP_{index}" for index in range(17)],
+        "AwayTeam": ["A"] * 17,
+        "Home_xG": [0.5] * 17,
+        "Away_xG": [float(index) for index in range(1, 18)],
+        "FTHG": [0] * 17,
+        "FTAG": [1] * 17,
+    })
+
+    result = add_leakage_safe_features(frame)
+    target = result.iloc[-1]
+
+    assert np.isclose(target["away_recent_for"], np.mean([12, 13, 14, 15, 16]))
+    assert np.isclose(target["away_recent_for_10"], np.mean(range(7, 17)))
+    assert np.isclose(target["away_recent_for_15"], np.mean(range(2, 17)))
