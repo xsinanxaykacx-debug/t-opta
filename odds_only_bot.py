@@ -250,6 +250,18 @@ def evaluate_validation(frame: pd.DataFrame, p_model: np.ndarray, output_dir: Pa
     predictions["expected_return"] = sides["ev_value"][mask]
     predictions["ev_best_side_won"] = sides["ev_won"][mask]
     predictions["market_direction_correct"] = (p_over[mask] >= 0.5) == (y[mask] == 1)
+    market_side = np.where(p_over[mask] >= 0.5, "OVER", "UNDER")
+    predictions["market_side"] = market_side
+    predictions["market_selected_odds"] = np.where(
+        market_side == "OVER", over[mask], under[mask]
+    )
+    predictions["market_side_won"] = np.where(
+        market_side == "OVER", y[mask] == 1, y[mask] == 0
+    )
+    predictions["market_high_odds_eligible"] = (
+        (predictions["market_selected_odds"] >= MIN_ODDS) &
+        (predictions["market_selected_odds"] <= MAX_ODDS)
+    )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     predictions.to_csv(output_dir / "validation_predictions.csv", index=False)
@@ -296,6 +308,12 @@ def segment_diagnostics(predictions: pd.DataFrame) -> pd.DataFrame:
                 bets["selected_side_odds"].to_numpy(dtype=float),
                 bets["selected_side_won"].to_numpy(dtype=bool),
             )
+            market_eligible = group["market_high_odds_eligible"].astype(bool)
+            market_bets = group.loc[market_eligible]
+            market_roi = _roi_summary(
+                market_bets["market_selected_odds"].to_numpy(dtype=float),
+                market_bets["market_side_won"].to_numpy(dtype=bool),
+            )
             row = {
                 "scope": scope,
                 "league": labels.get("League", ""),
@@ -316,6 +334,11 @@ def segment_diagnostics(predictions: pd.DataFrame) -> pd.DataFrame:
                 "average_odds": float(bets["selected_side_odds"].mean()) if n_bets else np.nan,
                 "break_even_hit_rate": float((1.0 / bets["selected_side_odds"]).mean()) if n_bets else np.nan,
                 "roi_pct": roi["roi_pct"],
+                "market_bets_160_250": int(len(market_bets)),
+                "market_hit_rate": market_roi["hit_rate"],
+                "market_average_odds": float(market_bets["market_selected_odds"].mean()) if len(market_bets) else np.nan,
+                "market_break_even_hit_rate": float((1.0 / market_bets["market_selected_odds"]).mean()) if len(market_bets) else np.nan,
+                "market_roi_pct": market_roi["roi_pct"],
                 "sample_at_least_50_bets": bool(n_bets >= 50),
             }
             rows.append(row)
