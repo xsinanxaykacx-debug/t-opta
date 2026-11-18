@@ -572,6 +572,7 @@ def run_experiment(data_path: Path, output_dir: Path) -> dict[str, Any]:
         summary = {
             "target_hit_rate": TARGET_HIT_RATE,
             "selected_model": selected_model,
+            "historical_source": history_metadata,
             **selection_report,
             "final_test_opened": False,
             "ready": False,
@@ -696,6 +697,7 @@ def run_experiment(data_path: Path, output_dir: Path) -> dict[str, Any]:
     summary = {
         "target_hit_rate": TARGET_HIT_RATE,
         "minimum_final_test_bets": MIN_FINAL_TEST_BETS,
+        "historical_source": history_metadata,
         **selection_report,
         "final_test": final_results,
         "final_test_opened": True,
