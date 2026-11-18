@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from BOT import HistoricalXGModel, market_data
+from BOT import HistoricalXGModel, PoissonOnlyModel, market_data
 
 from diagnostics import (
     directional_roi_report,
@@ -225,3 +225,18 @@ def test_primary_historical_model_features_do_not_depend_on_any_odds():
 
     assert expected.shape == (2, 15)
     assert np.array_equal(actual, expected)
+
+
+def test_primary_poisson_model_is_odds_independent_and_preserves_raw_probabilities():
+    model = PoissonOnlyModel()
+    frame = pd.DataFrame({
+        "p_poisson": [0.72, 0.31],
+        "odds_Avg>2.5": [1.01, 99.0],
+        "odds_Avg<2.5": [99.0, 1.01],
+        "odds_AvgC>2.5": [1.001, 999.0],
+        "odds_AvgC<2.5": [999.0, 1.001],
+    })
+
+    assert model.fit(frame) is model
+    assert model.calibrate(frame) is model
+    assert np.allclose(model.predict_proba(frame), [0.72, 0.31])
