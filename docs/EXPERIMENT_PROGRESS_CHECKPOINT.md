@@ -267,3 +267,66 @@ Updated pooled flat-stake edge ROI across the 10 OOF folds:
 
 
 - CI note: goal-based Poisson candidate commit `d654fe1836a63809a71e4202268877b24d57e11b` is on the diagnostics branch; its tests and walk-forward evaluation must complete before any adoption.
+
+
+---
+
+## Session checkpoint — 2026-11-18 continuation (recent-window fix, ensemble experiment, prediction CLI)
+
+### Scope / safety
+- All work remains on `diagnostics/over-under-market-analysis`.
+- Production / `main` has not been changed or merged.
+- Final Test remains sealed. The new diagnostics workflow used the walk-forward research pipeline; do not use the Final Test to tune the candidate.
+- Current branch HEAD observed from GitHub Actions: `27e7c000fd9c2150f7a42b2d78fb5c6e4779518f`.
+
+### Recent-history feature correction
+- Found an asymmetry in the rolling recent-xG feature window: one team-side deque was still limited to 5 matches while the other side had the longer recent-history window.
+- Updated the remaining `deque(maxlen=5)` in `BOT.py` to `deque(maxlen=15)`.
+- Added tests in `tests/test_bot_calendar_day_isolation.py` covering the away-side recent 5/10/15-match windows and opponent-defence adjustment in recent expected-goals rates.
+- This changes the historical feature calculation. Treat all earlier scores produced before this correction as superseded for model-selection purposes; rerun walk-forward on the corrected feature stream.
+
+### Candidate research: calibrated recent Poisson blend
+- Added `RecentPoissonBlendCandidate` in `scripts/walk_forward_over_under.py`.
+- Candidate blends four probability streams: long-term Poisson and recent opponent-adjusted Poisson estimates based on 5, 10 and 15 matches.
+- Blend weights are selected only on each fold's separate calibration partition, using a non-negative convex grid (weights sum to 1); validation rows are not used to choose weights.
+- Added the candidate to walk-forward fold metrics, confidence/top-10 reports and pooled OOF summaries.
+- Added a CSV output `walk_forward_recent_blend_weights.csv` to record fold-level calibration weights and calibration log loss.
+- Added a unit test asserting calibration-only weight learning and convex weight constraints.
+
+### Preliminary walk-forward result
+- Diagnostics workflow run #73: `44357333947`, SUCCESS, commit `27e7c000fd9c2150f7a42b2d78fb5c6e4779518f`.
+- The reported top-10 comparison for the 10 chronological folds was:
+  - Recent Poisson blend: **71/100 (71%)**.
+  - Raw Poisson comparator: **66/100 (66%)**.
+- This is a promising development-fold result, not final acceptance. Inspect the artifact and fold-level rows before relying on it; quantify fold dispersion and coverage. A pooled 71/100 does not guarantee 7/10 on an arbitrary future slate, and it does not establish positive ROI.
+- Do not promote the blend until tests are green, the CLI is validated, the calibration weights are inspected for stability, and a fresh locked evaluation protocol is satisfied.
+
+### Upcoming-fixture CLI integration attempt
+- Modified `scripts/predict_upcoming.py` to calibrate `RecentPoissonBlendCandidate` on the latest 500 eligible historical feature rows and use the resulting probabilities for upcoming fixtures.
+- Added a custom-probability input to `build_prediction_table()` with alignment and finite/range validation.
+- Added a test for custom probability ordering and a test that the upcoming predictor calibrates from the last 500 historical rows.
+- Feature construction excludes all historical matches on or after the first upcoming UTC calendar day, preserving same-day isolation.
+- IMPORTANT: this CLI integration is **not yet working**. The latest test run found that `RecentPoissonBlendCandidate` is not imported/defined in `scripts/predict_upcoming.py`. Fix the import and rerun the tests before treating the CLI as usable.
+
+### Latest CI state — must fix before continuing model adoption
+- Diagnostics workflow #73, run `44357333947`: **SUCCESS**.
+- Tests workflow #256, run `44357334007`: **FAILURE** on the same commit.
+- Pytest result: **83 passed, 2 failed, 7 warnings** in 276.13 seconds.
+- Failure 1: `tests/test_diagnostics.py::test_primary_historical_model_features_do_not_depend_on_any_odds`.
+  - `HistoricalXGModel` now expects additional recent 10/15-match fields and recent Poisson lambda/probability fields, but the test fixture does not construct them.
+  - Decide whether those features truly belong in `HistoricalXGModel`'s required schema. If yes, update the fixture using the real feature pipeline; if not, remove unnecessary required fields. Preserve the test's guarantee that the model's features do not depend on bookmaker odds.
+- Failure 2: `tests/test_predict_upcoming.py::test_predict_upcoming_calibrates_recent_blend_from_last_500_history`.
+  - `NameError: RecentPoissonBlendCandidate is not defined` at `scripts/predict_upcoming.py`.
+  - Import the class from `scripts.walk_forward_over_under` (and verify the package/import path in the workflow environment).
+- Do not mark CI green until a later run on the latest branch HEAD passes the full suite.
+- The failed run's pytest job completed; it is not a still-running test.
+
+### Immediate next actions
+1. Fix both pytest failures above on the diagnostics branch only.
+2. Rerun the full test suite; require SUCCESS before adopting the upcoming predictor.
+3. Inspect diagnostics run #73 artifacts, especially `walk_forward_recent_blend_weights.csv`, fold-level top-10 hit rates, coverage and model metrics.
+4. Add explicit tests for missing/invalid calibration data, no upcoming fixtures, duplicate fixtures, timezone boundaries, and calibration cutoff before upcoming dates.
+5. Confirm the CLI can run end-to-end with a realistic upcoming-fixture CSV and emits `PICK` / `NO_PICK` without odds inputs.
+6. Compare the candidate with raw Poisson over all folds using the same match rows and selection rules. Include confidence intervals and fold stability; do not cherry-pick the best folds.
+7. Keep bookmaker odds out of the production prediction path until source rights and as-of timestamp provenance are verified.
+8. Keep Final Test sealed until model, calibration and pick policy are frozen. Do not merge to `main` before all acceptance conditions are met.
