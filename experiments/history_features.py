@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import hashlib
 
 import numpy as np
 import pandas as pd
@@ -11,6 +12,15 @@ from scipy.stats import poisson
 
 from modules.feature_engine import FeatureEngine
 from modules.historical_engine import HistoricalEngine
+
+
+XG18_GIT_BLOB_SHA = "ed2213748abb12a1815c11376931b97568c17cf9"
+
+
+def git_blob_sha(path: Path) -> str:
+    payload = path.read_bytes()
+    header = f"blob {len(payload)}\\0".encode("ascii")
+    return hashlib.sha1(header + payload).hexdigest()
 
 
 def add_xg18_historical_features(
@@ -34,7 +44,16 @@ def add_xg18_historical_features(
     if out["MatchID"].isna().any() or out["MatchID"].duplicated().any():
         raise ValueError("xgo MatchID values must be populated and unique.")
 
-    history = HistoricalEngine(history_path)
+    history_file = Path(history_path)
+    if not history_file.is_file():
+        raise FileNotFoundError(f"xg18 history file not found: {history_file}")
+    actual_history_sha = git_blob_sha(history_file)
+    if actual_history_sha != XG18_GIT_BLOB_SHA:
+        raise ValueError(
+            "xg18.csv snapshot SHA mismatch. "
+            f"Expected {XG18_GIT_BLOB_SHA}, received {actual_history_sha}."
+        )
+    history = HistoricalEngine(history_file)
     history_ids = set(history.data["MatchID"].astype(str))
     requested_ids = out["MatchID"].astype(str).tolist()
     missing_ids = [match_id for match_id in requested_ids if match_id not in history_ids]
@@ -116,6 +135,7 @@ def add_xg18_historical_features(
 
     metadata = {
         "history_source": str(history.data_path),
+        "history_git_blob_sha": XG18_GIT_BLOB_SHA,
         "history_rows": int(len(history.data)),
         "history_dated_rows": int(history.data["Date"].notna().sum()),
         "history_date_min": history.data["Date"].min().isoformat(),
