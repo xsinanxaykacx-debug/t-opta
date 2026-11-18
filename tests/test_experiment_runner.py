@@ -44,7 +44,12 @@ def test_same_calendar_day_rows_are_purged_from_preceding_stage():
 
 
 def test_xgo_matches_join_to_audited_xg18_history():
-    source = pd.read_csv("xgo.csv", encoding="latin-1", nrows=3)
+    source = pd.read_csv(
+        "xgo.csv",
+        encoding="latin-1",
+        skiprows=range(1, 8500),
+        nrows=3,
+    )
     source["Date"] = pd.to_datetime(source["Date"], errors="coerce", utc=True)
 
     featured, metadata = add_xg18_historical_features(source, "xg18.csv")
