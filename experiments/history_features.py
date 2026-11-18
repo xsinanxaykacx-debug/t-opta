@@ -23,6 +23,26 @@ def git_blob_sha(path: Path) -> str:
     return hashlib.sha1(header + payload).hexdigest()
 
 
+
+def _add_poisson_features(frame: pd.DataFrame) -> pd.DataFrame:
+    """Derive a leakage-safe Poisson O/U 2.5 probability from history only."""
+    out = frame.copy()
+
+    def positive_feature(column: str, fallback: float) -> pd.Series:
+        values = pd.to_numeric(out[column], errors="coerce")
+        return values.where(values > 0, fallback)
+
+    home_for = positive_feature("hist_home_xg_for_ewma_5", 1.25)
+    away_against = positive_feature("hist_away_xg_against_ewma_5", 1.25)
+    away_for = positive_feature("hist_away_xg_for_ewma_5", 1.15)
+    home_against = positive_feature("hist_home_xg_against_ewma_5", 1.15)
+
+    out["hist_lambda_home"] = np.sqrt(home_for * away_against) * 1.05
+    out["hist_lambda_away"] = np.sqrt(away_for * home_against) / 1.05
+    total_lambda = (out["hist_lambda_home"] + out["hist_lambda_away"]).clip(0.2, 6.0)
+    out["p_poisson"] = poisson.sf(2, total_lambda)
+    return out
+
 def add_xg18_historical_features(
     frame: pd.DataFrame,
     history_path: str | Path = "xg18.csv",
@@ -152,48 +172,74 @@ def add_xg18_historical_features(
     if out[[f"hist_{column}" for column in historical_columns]].isna().all(axis=1).any():
         raise ValueError("One or more xgo fixtures have no joined historical features.")
 
-    def positive_feature(name: str, fallback_name: str) -> np.ndarray:
-        primary = pd.to_numeric(out[name], errors="coerce")
-        fallback = pd.to_numeric(out[fallback_name], errors="coerce")
-        values = primary.fillna(fallback).fillna(1.25)
-        return values.clip(lower=0.05, upper=5.0).to_numpy(dtype=float)
+    out = _add_poisson_features(out)
 
-    home_for = positive_feature(
-        "hist_home_xg_for_ewma_5", "hist_home_xg_for_avg_5"
-    )
-    home_against = positive_feature(
-        "hist_home_xg_against_ewma_5", "hist_home_xg_against_avg_5"
-    )
-    away_for = positive_feature(
-        "hist_away_xg_for_ewma_5", "hist_away_xg_for_avg_5"
-    )
-    away_against = positive_feature(
-        "hist_away_xg_against_ewma_5", "hist_away_xg_against_avg_5"
-    )
+    return out, metadata
 
-    # Symmetric attack-vs-defence interaction with a modest, fixed home factor.
-    lambda_home = np.clip(np.sqrt(home_for * away_against) * 1.05, 0.05, 5.0)
-    lambda_away = np.clip(np.sqrt(away_for * home_against) / 1.05, 0.05, 5.0)
-    out["hist_lambda_home"] = lambda_home
-    out["hist_lambda_away"] = lambda_away
-    out["p_poisson"] = np.clip(
-        poisson.sf(2, lambda_home + lambda_away),
-        1e-6,
-        1.0 - 1e-6,
+
+def build_upcoming_feature_frame(
+    fixtures: pd.DataFrame,
+    history_path: str | Path = "xg18.csv",
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Create the same historical feature contract for not-yet-played fixtures."""
+    required = ("Date", "League", "HomeTeam", "AwayTeam")
+    missing = [column for column in required if column not in fixtures.columns]
+    if missing:
+        raise ValueError(f"Upcoming fixtures are missing columns: {missing}")
+    if fixtures.empty:
+        raise ValueError("Upcoming fixture file contains no rows.")
+
+    out = fixtures.copy().reset_index(drop=True)
+    out["Date"] = pd.to_datetime(out["Date"], errors="coerce", utc=True)
+    for column in ("League", "HomeTeam", "AwayTeam"):
+        out[column] = out[column].astype("string").str.strip()
+    if out[list(required)].isna().any().any():
+        raise ValueError("Upcoming fixtures contain missing date/league/team values.")
+    if out[["League", "HomeTeam", "AwayTeam"]].eq("").any().any():
+        raise ValueError("Upcoming fixtures contain empty league/team names.")
+
+    history_file = Path(history_path)
+    if not history_file.is_file():
+        raise FileNotFoundError(f"xg18 history file not found: {history_file}")
+    actual_sha = git_blob_sha(history_file)
+    if actual_sha != XG18_GIT_BLOB_SHA:
+        raise ValueError(
+            "xg18.csv snapshot SHA mismatch. "
+            f"Expected {XG18_GIT_BLOB_SHA}, received {actual_sha}."
+        )
+
+    history = HistoricalEngine(history_file)
+    feature_engine = FeatureEngine(history)
+    rows = [
+        feature_engine.build_features_for_fixture(
+            league=str(row.League),
+            match_date=row.Date,
+            home_team=str(row.HomeTeam),
+            away_team=str(row.AwayTeam),
+        )
+        for row in out[["Date", "League", "HomeTeam", "AwayTeam"]].itertuples(
+            index=False
+        )
+    ]
+    feature_frame = pd.DataFrame(rows)
+    identity_columns = {"League", "match_date"}
+    feature_columns = [
+        column for column in feature_frame.columns if column not in identity_columns
+    ]
+    historical = feature_frame[feature_columns].rename(
+        columns={column: f"hist_{column}" for column in feature_columns}
     )
+    out = pd.concat([out, historical.reset_index(drop=True)], axis=1)
+    out = _add_poisson_features(out)
 
     metadata = {
-        "history_source": str(history.data_path),
-        "history_git_blob_sha": XG18_GIT_BLOB_SHA,
+        "history_path": str(history_file),
+        "history_git_blob_sha": actual_sha,
         "history_rows": int(len(history.data)),
         "history_dated_rows": int(history.data["Date"].notna().sum()),
         "history_date_min": history.data["Date"].min().isoformat(),
         "history_date_max": history.data["Date"].max().isoformat(),
-        "xgo_match_id_coverage": 1.0,
-        "fixture_identity_verified": True,
-        "pre_final_target_and_xg_verified": True,
-        "pre_final_target_rows_verified": int(len(validation_out)),
-        "historical_feature_count": int(len(historical_columns)),
         "history_rule": "same league; strictly earlier calendar days; same-day matches excluded",
+        "fixture_count": int(len(out)),
     }
     return out, metadata
