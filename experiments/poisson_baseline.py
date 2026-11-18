@@ -29,7 +29,7 @@ class PoissonBaseline:
             raise ValueError("Date contains invalid or missing values.")
         data["Date"] = original_dates.dt.normalize()
         featured = add_leakage_safe_features(data)
-        featured["Date"] = original_dates.to_numpy()
+        featured["Date"] = original_dates
         return featured
 
     def predict_proba(self, frame: pd.DataFrame) -> np.ndarray:
