@@ -34,6 +34,7 @@ def build_prediction_table(
     upcoming_features: pd.DataFrame,
     confidence_cutoff: float = 0.70,
     top_n: int = 10,
+    probabilities: np.ndarray | None = None,
 ) -> pd.DataFrame:
     """Rank future fixtures and mark only the top-N above the fixed confidence gate."""
     if not 0.5 < confidence_cutoff < 1.0:
@@ -47,7 +48,14 @@ def build_prediction_table(
     if "p_poisson" not in upcoming_features.columns:
         raise ValueError("Upcoming features do not contain p_poisson.")
 
-    probabilities = PoissonOnlyModel.predict_proba(upcoming_features)
+    if probabilities is None:
+        probabilities = PoissonOnlyModel.predict_proba(upcoming_features)
+    else:
+        probabilities = np.asarray(probabilities, dtype=float)
+        if probabilities.ndim != 1 or len(probabilities) != len(upcoming_features):
+            raise ValueError("Custom probabilities must be a 1D array aligned with upcoming fixtures.")
+        if not np.isfinite(probabilities).all() or ((probabilities <= 0.0) | (probabilities >= 1.0)).any():
+            raise ValueError("Custom probabilities must be finite and strictly between 0 and 1.")
     confidence = np.maximum(probabilities, 1.0 - probabilities)
     side = np.where(probabilities >= 0.5, "OVER", "UNDER")
     side_probability = np.maximum(probabilities, 1.0 - probabilities)
@@ -83,11 +91,12 @@ def build_prediction_table(
     ).drop(columns=["_pick_order"]).reset_index(drop=True)
 
 
-def prepare_upcoming_features(
+def _prepare_upcoming_feature_sets(
     history: pd.DataFrame,
     upcoming: pd.DataFrame,
-) -> pd.DataFrame:
-    """Build features using only historical rows strictly before upcoming calendar days."""
+    calibration_size: int = 500,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Build future and calibration rows from one strictly chronological feature pass."""
     history = history.copy()
     upcoming = upcoming.copy()
 
@@ -103,6 +112,8 @@ def prepare_upcoming_features(
         raise ValueError("Invalid Date value in history or upcoming fixtures.")
     if upcoming.empty:
         raise ValueError("Upcoming fixture file is empty.")
+    if isinstance(calibration_size, bool) or int(calibration_size) < 100:
+        raise ValueError("calibration_size must be an integer of at least 100.")
 
     for column in ("Home_xG", "Away_xG", "FTHG", "FTAG"):
         history[column] = pd.to_numeric(history[column], errors="coerce")
@@ -117,14 +128,14 @@ def prepare_upcoming_features(
         history["Date"].dt.normalize() < first_upcoming_day
     ].copy()
 
-    if history.empty:
-        raise ValueError("No historical matches exist before the upcoming fixture dates.")
+    if len(history) < int(calibration_size):
+        raise ValueError(
+            f"Need at least {calibration_size} historical matches for recent-model calibration; "
+            f"found {len(history)}."
+        )
 
     for column in RESULT_COLUMNS:
-        if column not in upcoming.columns:
-            upcoming[column] = np.nan
-        else:
-            upcoming[column] = np.nan
+        upcoming[column] = np.nan
 
     history["_is_upcoming"] = False
     upcoming["_is_upcoming"] = True
@@ -140,10 +151,23 @@ def prepare_upcoming_features(
 
     featured = add_leakage_safe_features(combined)
     future = featured.loc[featured["_is_upcoming"]].copy()
+    historical_features = featured.loc[~featured["_is_upcoming"]].copy()
+    calibration = historical_features.tail(int(calibration_size)).copy()
 
     if len(future) != len(upcoming):
         raise RuntimeError("Not all upcoming fixtures received prediction features.")
+    if len(calibration) != int(calibration_size):
+        raise RuntimeError("Recent-model calibration partition has an unexpected size.")
 
+    return future, calibration
+
+
+def prepare_upcoming_features(
+    history: pd.DataFrame,
+    upcoming: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build future fixture features using only history before upcoming calendar days."""
+    future, _ = _prepare_upcoming_feature_sets(history, upcoming)
     return future
 
 
@@ -157,11 +181,18 @@ def predict_upcoming(
     history = pd.read_csv(history_path, encoding="latin-1", low_memory=False)
     upcoming = pd.read_csv(upcoming_path, encoding="utf-8-sig", low_memory=False)
 
-    future_features = prepare_upcoming_features(history, upcoming)
+    future_features, calibration_features = _prepare_upcoming_feature_sets(
+        history,
+        upcoming,
+        calibration_size=500,
+    )
+    recent_model = RecentPoissonBlendCandidate().calibrate(calibration_features)
+    future_probabilities = recent_model.predict_proba(future_features)
     predictions = build_prediction_table(
         future_features,
         confidence_cutoff=confidence_cutoff,
         top_n=top_n,
+        probabilities=future_probabilities,
     )
 
     output_path = Path(output_path)
