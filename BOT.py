@@ -862,8 +862,18 @@ def confidence_policy_analysis(df, model, label, cutoff=0.75):
     over_mask = selected & (predicted == 1)
     under_mask = selected & (predicted == 0)
 
+    selected_indices = np.flatnonzero(selected)
+    selected_order = np.argsort(confidence[selected_indices])[::-1]
+    top_indices = selected_indices[selected_order[:10]]
+    top_correct = int(correct[top_indices].sum())
+    top_accuracy = float(correct[top_indices].mean()) if len(top_indices) else np.nan
+
     print(f"Correct        : {int(correct[selected].sum())} / {count}")
     print(f"Accuracy       : {accuracy:.2%}")
+    print(
+        f"Top-10 picks   : {top_correct} / {len(top_indices)} "
+        f"| accuracy: {top_accuracy:.2%}"
+    )
     print(
         f"OVER picks     : {int(over_mask.sum())} "
         f"| hit rate: {float(correct[over_mask].mean()):.2%}"
@@ -881,6 +891,9 @@ def confidence_policy_analysis(df, model, label, cutoff=0.75):
         "matches": count,
         "correct": int(correct[selected].sum()),
         "accuracy": accuracy,
+        "top_n": int(len(top_indices)),
+        "top_n_correct": top_correct,
+        "top_n_accuracy": top_accuracy,
         "coverage": float(count / total) if total else 0.0,
     }
 
