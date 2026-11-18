@@ -292,7 +292,11 @@ def test_prediction_diagnostics_keep_out_of_fold_rows_and_group_error_sources():
     assert len(raw) == 3
     assert set(raw["fold"]) == {2}
     assert raw["correct"].tolist() == [1, 1, 1]
-    assert {"LEAGUE", "SIDE", "CONFIDENCE", "TOTAL_LAMBDA", "HISTORY_DEPTH", "RECENT_FORM"} == set(report["dimension"])
+    assert {
+        "LEAGUE", "SIDE", "CONFIDENCE", "TOTAL_LAMBDA",
+        "HISTORY_DEPTH", "RECENT_FORM",
+        "RECENT_LAMBDA_5", "RECENT_LAMBDA_10", "RECENT_LAMBDA_15",
+    } == set(report["dimension"])
     pooled_league = report.loc[
         (report["fold"] == 0)
         & (report["dimension"] == "LEAGUE")
