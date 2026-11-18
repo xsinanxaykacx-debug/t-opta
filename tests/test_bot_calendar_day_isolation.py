@@ -38,6 +38,18 @@ def test_matches_on_same_calendar_day_do_not_update_each_others_history():
         "home_recent_against_15",
         "away_recent_for_15",
         "away_recent_against_15",
+        "lambda_home_recent_5",
+        "lambda_away_recent_5",
+        "lambda_total_recent_5",
+        "p_poisson_recent_5",
+        "lambda_home_recent_10",
+        "lambda_away_recent_10",
+        "lambda_total_recent_10",
+        "p_poisson_recent_10",
+        "lambda_home_recent_15",
+        "lambda_away_recent_15",
+        "lambda_total_recent_15",
+        "p_poisson_recent_15",
     ):
         assert np.isclose(
             result.loc[1, column],
@@ -94,3 +106,12 @@ def test_recent_xg_windows_use_only_prior_matches_and_keep_window_lengths():
     assert np.isclose(target["home_recent_for_15"], np.mean(range(2, 17)))
     assert np.isclose(target["home_recent_for_10"], 11.5)
     assert np.isclose(target["home_recent_for_15"], 9.0)
+    for window in (5, 10, 15):
+        assert np.isfinite(target[f"lambda_home_recent_{window}"])
+        assert np.isfinite(target[f"lambda_away_recent_{window}"])
+        assert np.isfinite(target[f"lambda_total_recent_{window}"])
+        assert 0.0 < target[f"p_poisson_recent_{window}"] < 1.0
+        assert np.isclose(
+            target[f"lambda_total_recent_{window}"],
+            target[f"lambda_home_recent_{window}"] + target[f"lambda_away_recent_{window}"],
+        )
