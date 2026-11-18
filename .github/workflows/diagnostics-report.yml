@@ -1,0 +1,62 @@
+name: diagnostics-report
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - diagnostics/over-under-market-analysis
+    paths:
+      - "BOT.py"
+      - "diagnostics.py"
+      - "config.py"
+      - "requirements.txt"
+      - "xgo.csv"
+      - ".github/workflows/diagnostics-report.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout diagnostics branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: python -m pytest
+
+      - name: Run chronological model evaluation and diagnostics
+        run: python BOT.py xgo.csv
+
+      - name: Verify diagnostic reports
+        run: |
+          test -d reports/diagnostics
+          count=$(find reports/diagnostics -maxdepth 1 -type f -name '*.csv' | wc -l)
+          echo "CSV reports generated: $count"
+          if [ "$count" -lt 5 ]; then
+            echo "::error::Expected at least five diagnostic CSV reports; found $count."
+            find reports -maxdepth 3 -type f -print || true
+            exit 1
+          fi
+          find reports/diagnostics -maxdepth 1 -type f -name '*.csv' -print
+
+      - name: Upload diagnostic CSV artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: t-opta-diagnostics-${{ github.run_id }}
+          path: reports/diagnostics/*.csv
+          if-no-files-found: error
+          retention-days: 14
