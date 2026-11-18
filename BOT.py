@@ -1305,6 +1305,13 @@ def main(path, skip_final_test=False):
         policy_select,
         model,
         "POLICY SELECT",
+        cutoff=0.70,
+    )
+
+    confidence_policy_analysis(
+        policy_select,
+        model,
+        "POLICY SELECT",
         cutoff=0.75,
     )
 
@@ -1343,6 +1350,13 @@ def main(path, skip_final_test=False):
         "POLICY CHECK — BAĞIMSIZ DOĞRULAMA",
         policy_check,
         model
+    )
+
+    confidence_policy_analysis(
+        policy_check,
+        model,
+        "POLICY CHECK",
+        cutoff=0.70,
     )
 
     confidence_policy_analysis(
