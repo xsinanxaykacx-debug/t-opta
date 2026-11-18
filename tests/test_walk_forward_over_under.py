@@ -4,6 +4,7 @@ from scripts.walk_forward_over_under import (
     HistGradientBoostingCandidate,
     LogisticOverUnderCandidate,
     NegativeBinomialCandidate,
+    RecentPoissonBlendCandidate,
     build_odds_provenance_report,
     platt_scale_probabilities,
     build_fold_slices,
@@ -391,3 +392,31 @@ def test_logistic_over_under_candidate_uses_train_only_selection_and_calibration
     assert len(probabilities) == len(validation)
     assert np.isfinite(probabilities).all()
     assert ((probabilities > 0.0) & (probabilities < 1.0)).all()
+
+
+def test_recent_poisson_blend_learns_weights_only_from_calibration():
+    import pandas as pd
+
+    labels = np.tile(np.array([0, 1], dtype=int), 100)
+    calibration = pd.DataFrame({
+        "FTHG": np.where(labels == 1, 2, 1),
+        "FTAG": np.where(labels == 1, 1, 0),
+        "p_poisson": np.where(labels == 1, 0.60, 0.40),
+        "p_poisson_recent_5": np.where(labels == 1, 0.90, 0.10),
+        "p_poisson_recent_10": np.where(labels == 1, 0.70, 0.30),
+        "p_poisson_recent_15": np.where(labels == 1, 0.65, 0.35),
+    })
+    validation = pd.DataFrame({
+        "p_poisson": [0.60, 0.40],
+        "p_poisson_recent_5": [0.90, 0.10],
+        "p_poisson_recent_10": [0.70, 0.30],
+        "p_poisson_recent_15": [0.65, 0.35],
+    })
+
+    model = RecentPoissonBlendCandidate().calibrate(calibration)
+    probabilities = model.predict_proba(validation)
+
+    assert np.isclose(model.weights.sum(), 1.0)
+    assert np.all(model.weights >= 0.0)
+    assert model.weights[1] > 0.0
+    assert np.allclose(probabilities, [0.90, 0.10])
