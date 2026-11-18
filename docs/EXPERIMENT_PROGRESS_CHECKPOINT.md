@@ -101,3 +101,51 @@ POLICY CHECK (selected threshold 0.03):
   - `policy_check_edge_buckets.csv`
   - `policy_check_reliability_bins.csv`
 - Earlier user checkpoint states model artifact metadata and GitHub Actions run numbers were saved. The referenced checkpoint markdown was not present in the branch's `docs/` directory when inspected; this file now restores the current verified state.
+
+
+## Latest walk-forward confidence findings (2026-11-18)
+
+Latest research workflow: run #13 `44340587905`, commit `9e855f810823be080f6aceb0bbb95cbb74830042`.
+Status: SUCCESS. Five policy-check CSVs and three walk-forward CSVs were generated and uploaded. The run log explicitly reports `POLICY-ONLY MODE: FINAL TEST SEALED — NOT ACCESSED`.
+
+Same-calendar-day isolation was added in commit `4555482a226214fc7fda2301f3516885a80a4fde`. The date grouping now normalizes UTC dates before grouping, so different kickoff timestamps on the same calendar day cannot update each other's historical team/league xG.
+
+Updated 10-fold pooled OOF metrics after the same-day isolation fix (2,674 valid-market matches):
+- BLEND: accuracy 58.26%, Brier 0.243105, log loss 0.694352, AUC 0.593320.
+- MARKET: accuracy 59.16%, Brier 0.238624, log loss 0.669980, AUC 0.613184.
+- POISSON: accuracy 57.63%, Brier 0.244329, log loss 0.682144, AUC 0.588489.
+- Market baseline still outperforms the blend on accuracy, Brier, log loss and AUC.
+
+Selective accuracy (OOF, only valid-market rows):
+- BLEND confidence >=0.65: 556 matches, 20.79% coverage, 67.81% accuracy. Approximate Wilson 95% interval: 63.81%–71.56%.
+- BLEND confidence >=0.70: 442 matches, 16.53% coverage, 68.33% accuracy.
+- BLEND confidence >=0.75: 188 matches, 7.03% coverage, 71.28% accuracy.
+- MARKET confidence >=0.65: 289 matches, 10.81% coverage, 71.63% accuracy.
+- POISSON confidence >=0.80: 34 matches, 1.27% coverage, 76.47% accuracy; sample is too small for a reliable claim.
+- Per-fold selective accuracy varies materially. BLEND >=0.65 ranges roughly 55%–75% across folds. Do not claim a stable 65–70% production hit rate yet.
+- Confidence coverage means only a fraction of all fixtures are selected. This can yield 6–7 correct per 10 selected picks, but does not mean the bot can safely make 10 picks from any arbitrary 10 fixtures.
+
+Updated pooled flat-stake edge ROI across the 10 OOF folds:
+- Edge 0.03: 1,426 bets, 55.05% hit, -7.26% ROI.
+- Edge 0.05: 885 bets, 57.63% hit, -6.71% ROI.
+- Edge 0.08: 457 bets, 58.21% hit, -8.83% ROI.
+- Edge 0.10: 243 bets, 60.49% hit, -7.51% ROI.
+- Edge 0.12: 138 bets, 63.77% hit, -5.83% ROI.
+- Edge 0.15: 61 bets, 65.57% hit, -7.21% ROI.
+- Edge 0.20: 33 bets, 69.70% hit, -3.55% ROI.
+- UNDER-only ROI is positive at 0.12, 0.15 and 0.20 in these development folds, but sample sizes are only 62, 30 and 18 bets respectively. These are exploratory results, not a validated betting policy.
+
+## New walk-forward implementation
+
+- `scripts/walk_forward_over_under.py` creates 10 expanding chronological folds strictly within the first 8,500 TRAIN rows.
+- Each fold uses earlier training rows, a separate 500-row calibration period, and a 300-row forward validation period.
+- It compares BLEND, MARKET and POISSON probabilities on identical valid-market rows.
+- It reports edge ROI by OVER/UNDER/ALL at thresholds 0.03 through 0.20 and selective accuracy/coverage at confidence cutoffs 0.55 through 0.80.
+- It does not access the policy select/check or Final Test rows for feature generation or scoring.
+- Latest report files: `walk_forward_metrics.csv`, `walk_forward_policy_roi.csv`, `walk_forward_confidence.csv`.
+
+## Latest pending verification
+
+- Tests workflow run #181: `44340587891`, commit `9e855f81...`; status IN_PROGRESS when this checkpoint was updated. It includes the walk-forward unit tests and same-calendar-day isolation test. Verify final conclusion.
+- Diagnostics workflow run #13: `44340587905`; SUCCESS.
+- Main remains unchanged; no merge has occurred.
