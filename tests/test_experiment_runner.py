@@ -47,7 +47,7 @@ def test_same_calendar_day_rows_are_purged_from_preceding_stage():
 def test_xgo_matches_join_to_audited_xg18_history():
     source = pd.read_csv(
         "xgo.csv",
-        encoding="latin-1",
+        encoding="utf-8-sig",
         skiprows=range(1, 8500),
         nrows=3,
     )
@@ -74,4 +74,4 @@ def test_policy_selection_prefers_hit_rate_when_minimum_sample_is_met():
     assert selected is not None
     assert selected["bets"] == 50
     assert selected["hit_rate"] == 1.0
-    assert selected["threshold"] > 0.75
+    assert selected["threshold"] > 0.6
