@@ -54,6 +54,27 @@ jobs:
               kind="mergesort"
           ).reset_index(drop=True)
           print("CLEAN_ROWS", len(clean))
+          cuts = (8500, 9400, 9700, 10000, 15734)
+          start = 0
+          parts = []
+          for name, end in zip(
+              ("TRAIN", "CALIBRATION", "POLICY_SELECT", "POLICY_CHECK", "FINAL_TEST"),
+              cuts
+          ):
+              part = clean.iloc[start:end]
+              if part.empty:
+                  raise SystemExit(f"Empty partition: {name}")
+              parts.append((name, part))
+              print("PARTITION", name, len(part),
+                    part["Date"].min().isoformat(),
+                    part["Date"].max().isoformat())
+              start = end
+          for (left_name, left), (right_name, right) in zip(parts, parts[1:]):
+              same_day = left["Date"].dt.normalize().max() == right["Date"].dt.normalize().min()
+              print("BOUNDARY", left_name, "->", right_name,
+                    "SAME_CALENDAR_DAY", bool(same_day),
+                    "LEFT_LAST", left["Date"].max().isoformat(),
+                    "RIGHT_FIRST", right["Date"].min().isoformat())
           print("DATE_MIN", clean["Date"].min().isoformat())
           print("DATE_MAX", clean["Date"].max().isoformat())
           print("DUPLICATE_FIXTURE_KEYS", int(clean.duplicated(
