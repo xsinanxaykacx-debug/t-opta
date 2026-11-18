@@ -72,6 +72,11 @@
 - GitHub Actions workflow added at `.github/workflows/ci.yml`; the connected status API has not shown a Python Actions run. The only reported status is the unrelated Vercel deployment rate-limit failure.
 - Equivalent Python logic checks run in this session passed; the exact repository pytest suite has not yet been confirmed green.
 
+## Fresh-data source check
+- Football-Data.co.uk lists 2026/27 CSV results/odds and was updated 2026-11-16; it also distinguishes earlier market odds from closing odds. Source: https://football-data.co.uk/downloadm.php
+- Its terms describe the data as for private individuals and exclude commercial/data-training products using automated bots/scrapers/AI. Do not ingest it into this automated model until permitted use is clarified. Source: https://football-data.co.uk/data
+- Understat currently covers xG for six main leagues, not a like-for-like replacement for the current 18-league xG dataset. Source: https://understat.com/
+
 ## Next steps
 1. Resolve why GitHub Actions is not reporting a run and obtain a real `pytest -q` result.
 3. Improve the model on Train/Validation only; current hybrid does not beat market baseline.
