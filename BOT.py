@@ -211,12 +211,21 @@ def add_leakage_safe_features(df):
 
     home_xg = out["Home_xG"].to_numpy(dtype=float)
     away_xg = out["Away_xG"].to_numpy(dtype=float)
+    home_goals = out["FTHG"].to_numpy(dtype=float)
+    away_goals = out["FTAG"].to_numpy(dtype=float)
 
     # (Lig, takım): xG-for, xG-against, maç sayısı
     team_stats = {}
 
     # Lig: toplam xG, takım-maç gözlem sayısı
     league_stats = {}
+
+    # Actual-goal history is isolated by UTC calendar day as well.
+    team_goal_stats = {}
+    league_goal_stats = {}
+    global_goal_stats = [0.0, 0]
+    home_goal_stats = [0.0, 0]
+    away_goal_stats = [0.0, 0]
 
     global_stats = [0.0, 0]
 
@@ -228,8 +237,11 @@ def add_leakage_safe_features(df):
     team_recent = {}
 
     p_poisson = np.full(n, 0.5)
+    p_poisson_goals = np.full(n, 0.5)
 
     lambda_home = np.full(n, np.nan)
+    lambda_home_goals = np.full(n, np.nan)
+    lambda_away_goals = np.full(n, np.nan)
     lambda_away = np.full(n, np.nan)
     home_for_mean = np.full(n, np.nan)
     home_against_mean = np.full(n, np.nan)
@@ -293,6 +305,69 @@ def add_leakage_safe_features(df):
 
             home_key = (lg, home[k])
             away_key = (lg, away[k])
+
+            goal_league_record = league_goal_stats.get(lg, [0.0, 0])
+            if goal_league_record[1] > 0:
+                goal_league_avg = goal_league_record[0] / goal_league_record[1]
+            elif global_goal_stats[1] > 0:
+                goal_league_avg = global_goal_stats[0] / global_goal_stats[1]
+            else:
+                goal_league_avg = 1.25
+            goal_league_avg = max(float(goal_league_avg), 0.05)
+
+            home_goal_record = team_goal_stats.get(home_key, [0.0, 0.0, 0])
+            away_goal_record = team_goal_stats.get(away_key, [0.0, 0.0, 0])
+
+            if home_goal_record[2] >= MIN_TEAM_HISTORY:
+                home_goal_for = home_goal_record[0] / home_goal_record[2]
+                home_goal_against = home_goal_record[1] / home_goal_record[2]
+            else:
+                home_goal_for = goal_league_avg
+                home_goal_against = goal_league_avg
+
+            if away_goal_record[2] >= MIN_TEAM_HISTORY:
+                away_goal_for = away_goal_record[0] / away_goal_record[2]
+                away_goal_against = away_goal_record[1] / away_goal_record[2]
+            else:
+                away_goal_for = goal_league_avg
+                away_goal_against = goal_league_avg
+
+            if home_goal_stats[1] > 0:
+                home_goal_avg = home_goal_stats[0] / home_goal_stats[1]
+            else:
+                home_goal_avg = goal_league_avg
+
+            if away_goal_stats[1] > 0:
+                away_goal_avg = away_goal_stats[0] / away_goal_stats[1]
+            else:
+                away_goal_avg = goal_league_avg
+
+            home_goal_advantage = np.clip(
+                home_goal_avg / max(away_goal_avg, 0.05),
+                0.75,
+                1.35,
+            )
+
+            lam_h_goals = (
+                (home_goal_for / goal_league_avg)
+                * (away_goal_against / goal_league_avg)
+                * goal_league_avg
+                * home_goal_advantage
+            )
+            lam_a_goals = (
+                (away_goal_for / goal_league_avg)
+                * (home_goal_against / goal_league_avg)
+                * goal_league_avg
+            )
+            lam_h_goals = float(np.clip(lam_h_goals, 0.05, 5.0))
+            lam_a_goals = float(np.clip(lam_a_goals, 0.05, 5.0))
+
+            lambda_home_goals[k] = lam_h_goals
+            lambda_away_goals[k] = lam_a_goals
+            p_poisson_goals[k] = poisson.sf(
+                2,
+                lam_h_goals + lam_a_goals,
+            )
 
             hs = team_stats.get(
                 home_key,
@@ -420,6 +495,42 @@ def add_leakage_safe_features(df):
 
         for k in indexes:
 
+            hg = home_goals[k]
+            ag = away_goals[k]
+            lg = league[k]
+
+            if np.isfinite(hg) and np.isfinite(ag):
+                home_key = (lg, home[k])
+                away_key = (lg, away[k])
+
+                home_goal_record = team_goal_stats.setdefault(
+                    home_key, [0.0, 0.0, 0]
+                )
+                away_goal_record = team_goal_stats.setdefault(
+                    away_key, [0.0, 0.0, 0]
+                )
+
+                home_goal_record[0] += hg
+                home_goal_record[1] += ag
+                home_goal_record[2] += 1
+
+                away_goal_record[0] += ag
+                away_goal_record[1] += hg
+                away_goal_record[2] += 1
+
+                league_goal_record = league_goal_stats.setdefault(
+                    lg, [0.0, 0]
+                )
+                league_goal_record[0] += hg + ag
+                league_goal_record[1] += 2
+
+                global_goal_stats[0] += hg + ag
+                global_goal_stats[1] += 2
+                home_goal_stats[0] += hg
+                home_goal_stats[1] += 1
+                away_goal_stats[0] += ag
+                away_goal_stats[1] += 1
+
             hxg = home_xg[k]
             axg = away_xg[k]
 
@@ -429,7 +540,6 @@ def add_leakage_safe_features(df):
             ):
                 continue
 
-            lg = league[k]
 
             home_key = (lg, home[k])
             away_key = (lg, away[k])
@@ -486,7 +596,14 @@ def add_leakage_safe_features(df):
         1e-6,
         1 - 1e-6
     )
+    out["p_poisson_goals"] = np.clip(
+        p_poisson_goals,
+        1e-6,
+        1 - 1e-6
+    )
 
+    out["lambda_home_goals"] = lambda_home_goals
+    out["lambda_away_goals"] = lambda_away_goals
     out["lambda_home"] = lambda_home
     out["lambda_away"] = lambda_away
     out["home_for_mean"] = home_for_mean

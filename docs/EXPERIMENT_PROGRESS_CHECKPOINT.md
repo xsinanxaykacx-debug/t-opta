@@ -228,3 +228,39 @@ Updated pooled flat-stake edge ROI across the 10 OOF folds:
 - Seven warnings were emitted (including pandas concat FutureWarnings and scikit-learn penalty deprecation); they did not fail the run.
 - Next step: correct the slice-length assertion on the development branch, rerun pytest, then rerun diagnostics if any model/report code changes. Do not mark tests green until a new run succeeds.
 - Checkpoint update commit: `54b929a25669861cf748a5e6a39bc5628c17be3b` (this is the current branch HEAD after saving this checkpoint). Main has not been merged or modified by this checkpoint operation.
+
+
+---
+
+## 2026-11-18 continuation — after Tests #221 / Diagnostics #43
+
+### Verified CI
+- Tests workflow #221: SUCCESS — **73 passed, 7 warnings in 280.71s**.
+- Diagnostics workflow #43: SUCCESS on commit `889d98fadbb1ecfa3dde8062a11cdd2fed3abefb`.
+- Diagnostics explicitly logged: `POLICY-ONLY MODE: FINAL TEST SEALED — NOT ACCESSED`.
+- Main remains unchanged; no merge.
+
+### New research findings
+- HistGradientBoosting candidate was rejected: pooled all-match accuracy 57.03%, below raw Poisson 57.63%.
+- Platt-calibrated Poisson was rejected: pooled all-match accuracy 57.00%; at confidence >=0.70 it selected only 94/3,000 OOF matches and achieved 60.64%.
+- Raw Poisson remains the strongest odds-independent candidate so far:
+  - 3,000 train-only OOF matches: 57.63% overall accuracy.
+  - Confidence >=0.70: 374 picks / 3,000 (12.47% coverage), 68.18% accuracy.
+  - Across ten chronological validation folds, top-10 selections averaged 6.6/10 (66/100); six folds reached at least 7/10, with poor periods at 3/10.
+  - Directional report exposed severe bias: 366 OVER vs only 8 UNDER among 374 >=0.70 picks.
+- Market-dependent research blend reached 71/100 top-10 correct (7.1/10 average; 7/10 folds at or above 7), but it uses bookmaker odds and is not approved for production.
+- Odds provenance audit of the first 8,500 TRAIN rows:
+  - 7,798 rows have an odds source filename and `odds_match_status=matched`; all named source-file groups show a 100% matched rate.
+  - 702 rows have missing odds source metadata and no valid Avg/B365 O/U pair.
+  - Source names such as `D2 (4).csv`, `E0.csv`, `T1 (3).csv` align with Football-Data league-file codes.
+  - Football-Data's official notes define non-`C` odds as pre-closing and `C`-suffixed odds as closing. This supports the field mapping, but the source audit is not a checksum-level proof of every original row.
+  - Football-Data's published usage notice restricts use to private individuals and excludes commercial or AI/bot-based data-training products. Do not promote the odds-dependent blend to production without confirming the user's rights/permission.
+- Do not use closing odds or unverified row-level odds. The primary candidate remains odds-independent.
+
+### Current next experiment
+- Added a separate historical-goals Poisson feature path using only prior `FTHG/FTAG` results, updated after all matches on each UTC calendar day.
+- Walk-forward will compare:
+  - `GOAL_POISSON`: Poisson model from historical actual-goal rates.
+  - `XG_GOAL_BLEND`: fixed 50/50 probability blend of xG-based and actual-goal Poisson candidates.
+- This is research only; do not change the production model until all ten chronological folds support it.
+- Final Test remains sealed. Main remains unchanged. No merge.

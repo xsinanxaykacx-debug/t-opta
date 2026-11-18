@@ -395,10 +395,10 @@ def run_walk_forward(
     confidence_rows = []
     oof = {
         "y": [], "blend": [], "historical_xg": [], "market": [],
-        "poisson": [], "poisson_cal": [], "poisson_platt": [], "hgb": [],
+        "poisson": [], "poisson_cal": [], "poisson_platt": [], "goal_poisson": [], "xg_goal_blend": [], "hgb": [],
     }
     oof_all = {
-        "y": [], "historical_xg": [], "poisson": [], "poisson_cal": [], "poisson_platt": [], "hgb": [],
+        "y": [], "historical_xg": [], "poisson": [], "poisson_cal": [], "poisson_platt": [], "goal_poisson": [], "xg_goal_blend": [], "hgb": [],
     }
 
     for fold_number, (train_slice, calibration_slice, validation_slice) in enumerate(windows, 1):
@@ -424,6 +424,8 @@ def run_walk_forward(
         p_historical = historical_model.predict_proba(validation)
         p_hgb = hgb_model.predict_proba(validation)
         p_poisson = validation["p_poisson"].to_numpy(dtype=float)
+        p_goal_poisson = validation["p_poisson_goals"].to_numpy(dtype=float)
+        p_xg_goal_blend = np.clip(0.5 * p_poisson + 0.5 * p_goal_poisson, 1e-6, 1.0 - 1e-6)
         p_market, over_odds, under_odds, market_valid = market_data(validation)
 
         # Calibrated Poisson-only candidate: no bookmaker odds in its features.
@@ -452,11 +454,15 @@ def run_walk_forward(
             _score_row(y, p_poisson, market_valid, "POISSON", fold_number),
             _score_row(y, p_poisson_cal, market_valid, "POISSON_CAL", fold_number),
             _score_row(y, p_poisson_platt, market_valid, "POISSON_PLATT", fold_number),
+            _score_row(y, p_goal_poisson, market_valid, "GOAL_POISSON", fold_number),
+            _score_row(y, p_xg_goal_blend, market_valid, "XG_GOAL_BLEND", fold_number),
             _score_row(y, p_hgb, market_valid, "HIST_GB", fold_number),
             _score_row(y, p_historical, np.ones(len(y), dtype=bool), "HISTORICAL_XG", fold_number, "ALL_MATCHES"),
             _score_row(y, p_poisson, np.ones(len(y), dtype=bool), "POISSON", fold_number, "ALL_MATCHES"),
             _score_row(y, p_poisson_cal, np.ones(len(y), dtype=bool), "POISSON_CAL", fold_number, "ALL_MATCHES"),
             _score_row(y, p_poisson_platt, np.ones(len(y), dtype=bool), "POISSON_PLATT", fold_number, "ALL_MATCHES"),
+            _score_row(y, p_goal_poisson, np.ones(len(y), dtype=bool), "GOAL_POISSON", fold_number, "ALL_MATCHES"),
+            _score_row(y, p_xg_goal_blend, np.ones(len(y), dtype=bool), "XG_GOAL_BLEND", fold_number, "ALL_MATCHES"),
             _score_row(y, p_hgb, np.ones(len(y), dtype=bool), "HIST_GB", fold_number, "ALL_MATCHES"),
         ])
 
@@ -467,6 +473,8 @@ def run_walk_forward(
             ("POISSON", p_poisson),
             ("POISSON_CAL", p_poisson_cal),
             ("POISSON_PLATT", p_poisson_platt),
+            ("GOAL_POISSON", p_goal_poisson),
+            ("XG_GOAL_BLEND", p_xg_goal_blend),
             ("HIST_GB", p_hgb),
         ):
             confidence_rows.extend(calculate_confidence_rows(
@@ -481,6 +489,8 @@ def run_walk_forward(
             ("POISSON", p_poisson),
             ("POISSON_CAL", p_poisson_cal),
             ("POISSON_PLATT", p_poisson_platt),
+            ("GOAL_POISSON", p_goal_poisson),
+            ("XG_GOAL_BLEND", p_xg_goal_blend),
             ("HIST_GB", p_hgb),
         ):
             confidence_rows.extend(calculate_confidence_rows(
@@ -496,6 +506,8 @@ def run_walk_forward(
             ("HISTORICAL_XG", p_historical),
             ("POISSON_CAL", p_poisson_cal),
             ("POISSON_PLATT", p_poisson_platt),
+            ("GOAL_POISSON", p_goal_poisson),
+            ("XG_GOAL_BLEND", p_xg_goal_blend),
             ("HIST_GB", p_hgb),
         ):
             for threshold in thresholds:
@@ -519,12 +531,16 @@ def run_walk_forward(
         oof["poisson"].extend(p_poisson[valid_indices].tolist())
         oof["poisson_cal"].extend(p_poisson_cal[valid_indices].tolist())
         oof["poisson_platt"].extend(p_poisson_platt[valid_indices].tolist())
+        oof["goal_poisson"].extend(p_goal_poisson[valid_indices].tolist())
+        oof["xg_goal_blend"].extend(p_xg_goal_blend[valid_indices].tolist())
         oof["hgb"].extend(p_hgb[valid_indices].tolist())
         oof_all["y"].extend(y.tolist())
         oof_all["historical_xg"].extend(p_historical.tolist())
         oof_all["poisson"].extend(p_poisson.tolist())
         oof_all["poisson_cal"].extend(p_poisson_cal.tolist())
         oof_all["poisson_platt"].extend(p_poisson_platt.tolist())
+        oof_all["goal_poisson"].extend(p_goal_poisson.tolist())
+        oof_all["xg_goal_blend"].extend(p_xg_goal_blend.tolist())
         oof_all["hgb"].extend(p_hgb.tolist())
 
         print(
@@ -542,6 +558,8 @@ def run_walk_forward(
         _score_row(y_all, np.asarray(oof["poisson"]), all_mask, "POISSON", 0),
         _score_row(y_all, np.asarray(oof["poisson_cal"]), all_mask, "POISSON_CAL", 0),
         _score_row(y_all, np.asarray(oof["poisson_platt"]), all_mask, "POISSON_PLATT", 0),
+        _score_row(y_all, np.asarray(oof["goal_poisson"]), all_mask, "GOAL_POISSON", 0),
+        _score_row(y_all, np.asarray(oof["xg_goal_blend"]), all_mask, "XG_GOAL_BLEND", 0),
         _score_row(y_all, np.asarray(oof["hgb"]), all_mask, "HIST_GB", 0),
     ])
 
@@ -552,6 +570,8 @@ def run_walk_forward(
         _score_row(y_all_matches, np.asarray(oof_all["poisson"]), all_match_mask, "POISSON", 0, "ALL_MATCHES"),
         _score_row(y_all_matches, np.asarray(oof_all["poisson_cal"]), all_match_mask, "POISSON_CAL", 0, "ALL_MATCHES"),
         _score_row(y_all_matches, np.asarray(oof_all["poisson_platt"]), all_match_mask, "POISSON_PLATT", 0, "ALL_MATCHES"),
+        _score_row(y_all_matches, np.asarray(oof_all["goal_poisson"]), all_match_mask, "GOAL_POISSON", 0, "ALL_MATCHES"),
+        _score_row(y_all_matches, np.asarray(oof_all["xg_goal_blend"]), all_match_mask, "XG_GOAL_BLEND", 0, "ALL_MATCHES"),
         _score_row(y_all_matches, np.asarray(oof_all["hgb"]), all_match_mask, "HIST_GB", 0, "ALL_MATCHES"),
     ])
 
@@ -565,6 +585,8 @@ def run_walk_forward(
         ("POISSON", np.asarray(oof["poisson"], dtype=float)),
         ("POISSON_CAL", np.asarray(oof["poisson_cal"], dtype=float)),
         ("POISSON_PLATT", np.asarray(oof["poisson_platt"], dtype=float)),
+        ("GOAL_POISSON", np.asarray(oof["goal_poisson"], dtype=float)),
+        ("XG_GOAL_BLEND", np.asarray(oof["xg_goal_blend"], dtype=float)),
         ("HIST_GB", np.asarray(oof["hgb"], dtype=float)),
     ):
         confidence_rows.extend(calculate_confidence_rows(
@@ -579,6 +601,8 @@ def run_walk_forward(
         ("POISSON", np.asarray(oof_all["poisson"], dtype=float)),
         ("POISSON_CAL", np.asarray(oof_all["poisson_cal"], dtype=float)),
         ("POISSON_PLATT", np.asarray(oof_all["poisson_platt"], dtype=float)),
+        ("GOAL_POISSON", np.asarray(oof_all["goal_poisson"], dtype=float)),
+        ("XG_GOAL_BLEND", np.asarray(oof_all["xg_goal_blend"], dtype=float)),
         ("HIST_GB", np.asarray(oof_all["hgb"], dtype=float)),
     ):
         confidence_rows.extend(calculate_confidence_rows(
