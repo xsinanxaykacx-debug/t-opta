@@ -20,9 +20,9 @@ def test_walk_forward_folds_are_expanding_and_chronological():
         assert train.start == 0
         assert train.stop == calibration.start
         assert calibration.stop == validation.start
-        assert len(train) >= 5000
-        assert len(calibration) == 500
-        assert len(validation) == 300
+        assert train.stop - train.start >= 5000
+        assert calibration.stop - calibration.start == 500
+        assert validation.stop - validation.start == 300
     assert folds[-1][2].stop == 8500
 
 
