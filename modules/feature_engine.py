@@ -23,25 +23,28 @@ class FeatureEngine:
     @staticmethod
     def _ewma(series, span=5):
         values = pd.to_numeric(series, errors="coerce").dropna()
+        # Team histories are newest-first; reverse so EWMA gives greater
+        # weight to the most recent completed match.
+        values = values.iloc[::-1]
         return float(values.ewm(span=span, adjust=False).mean().iloc[-1]) if len(values) else math.nan
 
     def _team_features(self, history: pd.DataFrame, before_date, prefix: str, venue: str) -> dict:
         if history.empty:
             return {
                 f"{prefix}_matches_available": 0,
-                f"{prefix}_goals_for_avg_5": np.nan,
-                f"{prefix}_goals_against_avg_5": np.nan,
-                f"{prefix}_xg_for_avg_5": np.nan,
-                f"{prefix}_xg_against_avg_5": np.nan,
-                f"{prefix}_points_avg_5": np.nan,
-                f"{prefix}_goals_for_avg_10": np.nan,
-                f"{prefix}_goals_against_avg_10": np.nan,
-                f"{prefix}_xg_for_avg_10": np.nan,
-                f"{prefix}_xg_against_avg_10": np.nan,
-                f"{prefix}_points_avg_10": np.nan,
-                f"{prefix}_xg_for_ewma_5": np.nan,
-                f"{prefix}_xg_against_ewma_5": np.nan,
-                f"{prefix}_rest_days": np.nan,
+                f"{prefix}_goals_for_avg_5": math.nan,
+                f"{prefix}_goals_against_avg_5": math.nan,
+                f"{prefix}_xg_for_avg_5": math.nan,
+                f"{prefix}_xg_against_avg_5": math.nan,
+                f"{prefix}_points_avg_5": math.nan,
+                f"{prefix}_goals_for_avg_10": math.nan,
+                f"{prefix}_goals_against_avg_10": math.nan,
+                f"{prefix}_xg_for_avg_10": math.nan,
+                f"{prefix}_xg_against_avg_10": math.nan,
+                f"{prefix}_points_avg_10": math.nan,
+                f"{prefix}_xg_for_ewma_5": math.nan,
+                f"{prefix}_xg_against_ewma_5": math.nan,
+                f"{prefix}_rest_days": math.nan,
             }
 
         venue_history = history.loc[history["TeamSide"].eq(venue)].copy()
