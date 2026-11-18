@@ -3,8 +3,9 @@
 Usage:
     python scripts/predict_upcoming.py xgo.csv upcoming.csv --output predictions.csv
 
-The predictor uses only prior-match xG-derived Poisson probabilities. It does
-not read bookmaker odds, and it never uses same-calendar-day match results.
+The predictor calibrates a blend of long-term and recent opponent-adjusted
+Poisson probabilities on the latest 500 historical matches. It does not read
+bookmaker odds and never uses same-calendar-day match results.
 """
 from __future__ import annotations
 
@@ -94,7 +95,7 @@ def build_prediction_table(
 def _prepare_upcoming_feature_sets(
     history: pd.DataFrame,
     upcoming: pd.DataFrame,
-    calibration_size: int = 500,
+    calibration_size: int | None = 500,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build future and calibration rows from one strictly chronological feature pass."""
     history = history.copy()
@@ -112,7 +113,9 @@ def _prepare_upcoming_feature_sets(
         raise ValueError("Invalid Date value in history or upcoming fixtures.")
     if upcoming.empty:
         raise ValueError("Upcoming fixture file is empty.")
-    if isinstance(calibration_size, bool) or int(calibration_size) < 100:
+    if calibration_size is not None and (
+        isinstance(calibration_size, bool) or int(calibration_size) < 100
+    ):
         raise ValueError("calibration_size must be an integer of at least 100.")
 
     for column in ("Home_xG", "Away_xG", "FTHG", "FTAG"):
@@ -128,7 +131,7 @@ def _prepare_upcoming_feature_sets(
         history["Date"].dt.normalize() < first_upcoming_day
     ].copy()
 
-    if len(history) < int(calibration_size):
+    if calibration_size is not None and len(history) < int(calibration_size):
         raise ValueError(
             f"Need at least {calibration_size} historical matches for recent-model calibration; "
             f"found {len(history)}."
@@ -152,11 +155,15 @@ def _prepare_upcoming_feature_sets(
     featured = add_leakage_safe_features(combined)
     future = featured.loc[featured["_is_upcoming"]].copy()
     historical_features = featured.loc[~featured["_is_upcoming"]].copy()
-    calibration = historical_features.tail(int(calibration_size)).copy()
+    calibration = (
+        historical_features.tail(int(calibration_size)).copy()
+        if calibration_size is not None
+        else historical_features.iloc[0:0].copy()
+    )
 
     if len(future) != len(upcoming):
         raise RuntimeError("Not all upcoming fixtures received prediction features.")
-    if len(calibration) != int(calibration_size):
+    if calibration_size is not None and len(calibration) != int(calibration_size):
         raise RuntimeError("Recent-model calibration partition has an unexpected size.")
 
     return future, calibration
@@ -167,7 +174,7 @@ def prepare_upcoming_features(
     upcoming: pd.DataFrame,
 ) -> pd.DataFrame:
     """Build future fixture features using only history before upcoming calendar days."""
-    future, _ = _prepare_upcoming_feature_sets(history, upcoming)
+    future, _ = _prepare_upcoming_feature_sets(history, upcoming, calibration_size=None)
     return future
 
 
