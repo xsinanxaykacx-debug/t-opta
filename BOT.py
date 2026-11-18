@@ -524,10 +524,22 @@ def add_leakage_safe_features(df):
                     home_adv,
                 )
                 recent_lambda_total = recent_lambda_h + recent_lambda_a
-                globals()[f"lambda_home_recent_{window}"][k] = recent_lambda_h
-                globals()[f"lambda_away_recent_{window}"][k] = recent_lambda_a
-                globals()[f"lambda_total_recent_{window}"][k] = recent_lambda_total
-                globals()[f"p_poisson_recent_{window}"][k] = poisson.sf(2, recent_lambda_total)
+                recent_probability = poisson.sf(2, recent_lambda_total)
+                if window == 5:
+                    lambda_home_recent_5[k] = recent_lambda_h
+                    lambda_away_recent_5[k] = recent_lambda_a
+                    lambda_total_recent_5[k] = recent_lambda_total
+                    p_poisson_recent_5[k] = recent_probability
+                elif window == 10:
+                    lambda_home_recent_10[k] = recent_lambda_h
+                    lambda_away_recent_10[k] = recent_lambda_a
+                    lambda_total_recent_10[k] = recent_lambda_total
+                    p_poisson_recent_10[k] = recent_probability
+                else:
+                    lambda_home_recent_15[k] = recent_lambda_h
+                    lambda_away_recent_15[k] = recent_lambda_a
+                    lambda_total_recent_15[k] = recent_lambda_total
+                    p_poisson_recent_15[k] = recent_probability
 
             home_for_mean[k] = home_for
             home_against_mean[k] = home_against
