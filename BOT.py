@@ -103,6 +103,10 @@ def valid_odds(series):
 
 def market_data(df):
 
+    # Strict temporal rule: only non-C odds fields are eligible here.
+    # Closing-price columns (AvgC/B365C/MaxC/PC and similar) must never
+    # be read as prediction-time features or fallback prices.
+
     n = len(df)
 
     avg_over = (
