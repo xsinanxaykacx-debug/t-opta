@@ -158,10 +158,16 @@ class HistoricalEngine:
             ["Date", "MatchID"], ascending=[False, False], kind="stable"
         ).copy().reset_index(drop=True)
 
-    def get_match_history(self, home_team: str, away_team: str, before_date) -> pd.DataFrame:
-        """Return prior completed head-to-head matches, excluding target calendar day."""
+    def get_match_history(
+        self,
+        home_team: str,
+        away_team: str,
+        before_date,
+        league: str | None = None,
+    ) -> pd.DataFrame:
+        """Return prior head-to-head matches in the target league only."""
         if not isinstance(away_team, str) or not away_team.strip():
             raise ValueError("away_team must be a non-empty string.")
-        history = self.get_team_history(home_team, before_date)
+        history = self.get_team_history(home_team, before_date, league=league)
         mask = history["Opponent"].str.casefold() == away_team.strip().casefold()
         return history.loc[mask].copy().reset_index(drop=True)
