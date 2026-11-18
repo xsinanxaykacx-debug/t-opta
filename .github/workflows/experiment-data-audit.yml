@@ -1,9 +1,6 @@
 name: experiment-data-audit
 
 on:
-  push:
-    branches:
-      - experiments/three-model-comparison
   workflow_dispatch:
 
 jobs:
