@@ -249,6 +249,7 @@ def evaluate_validation(frame: pd.DataFrame, p_model: np.ndarray, output_dir: Pa
     predictions["ev_best_side_odds"] = sides["ev_odds"][mask]
     predictions["expected_return"] = sides["ev_value"][mask]
     predictions["ev_best_side_won"] = sides["ev_won"][mask]
+    predictions["market_direction_correct"] = (p_over[mask] >= 0.5) == (y[mask] == 1)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     predictions.to_csv(output_dir / "validation_predictions.csv", index=False)
@@ -257,6 +258,70 @@ def evaluate_validation(frame: pd.DataFrame, p_model: np.ndarray, output_dir: Pa
         output_dir / "validation_high_odds_summary.csv", index=False
     )
     pd.DataFrame(bucket_rows).to_csv(output_dir / "validation_odds_bands.csv", index=False)
+    segment_diagnostics(predictions).to_csv(
+        output_dir / "validation_league_season_diagnostics.csv", index=False
+    )
+
+
+
+def _season_label(dates: pd.Series) -> pd.Series:
+    """Football season label: July onward starts the next season."""
+    parsed = pd.to_datetime(dates, utc=True, errors="coerce")
+    start_year = parsed.dt.year.where(parsed.dt.month >= 7, parsed.dt.year - 1)
+    end_year = start_year + 1
+    return start_year.astype("Int64").astype(str) + "/" + end_year.astype("Int64").astype(str)
+
+
+def segment_diagnostics(predictions: pd.DataFrame) -> pd.DataFrame:
+    """Descriptive league/season diagnostics on validation only; never tune on these rows."""
+    data = predictions.copy()
+    data["season"] = _season_label(data["Date"])
+    rows = []
+
+    group_specs = []
+    if "League" in data.columns:
+        group_specs.append(("league", ["League"]))
+        group_specs.append(("league_season", ["League", "season"]))
+    group_specs.append(("season", ["season"]))
+
+    for scope, columns in group_specs:
+        for keys, group in data.groupby(columns, dropna=False, sort=True):
+            if not isinstance(keys, tuple):
+                keys = (keys,)
+            labels = dict(zip(columns, keys))
+            eligible = group["high_odds_eligible"].astype(bool)
+            bets = group.loc[eligible]
+            n_bets = len(bets)
+            roi = _roi_summary(
+                bets["selected_side_odds"].to_numpy(dtype=float),
+                bets["selected_side_won"].to_numpy(dtype=bool),
+            )
+            row = {
+                "scope": scope,
+                "league": labels.get("League", ""),
+                "season": labels.get("season", ""),
+                "matches": int(len(group)),
+                "model_directional_accuracy": float(
+                    np.mean(group["predicted_side"].to_numpy() == np.where(
+                        group["actual_over25"].to_numpy(dtype=int) == 1, "OVER", "UNDER"
+                    ))
+                ),
+                "market_directional_accuracy": float(
+                    np.mean((group["p_market_over"].to_numpy(dtype=float) >= 0.5) ==
+                            (group["actual_over25"].to_numpy(dtype=int) == 1))
+                ),
+                "bets_160_250": int(n_bets),
+                "wins": int(roi["wins"]),
+                "hit_rate": roi["hit_rate"],
+                "average_odds": float(bets["selected_side_odds"].mean()) if n_bets else np.nan,
+                "break_even_hit_rate": float((1.0 / bets["selected_side_odds"]).mean()) if n_bets else np.nan,
+                "roi_pct": roi["roi_pct"],
+                "sample_at_least_50_bets": bool(n_bets >= 50),
+            }
+            rows.append(row)
+
+    return pd.DataFrame(rows)
+
 
 
 def load_data(path: Path):
