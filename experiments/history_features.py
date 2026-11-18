@@ -26,6 +26,8 @@ def git_blob_sha(path: Path) -> str:
 def add_xg18_historical_features(
     frame: pd.DataFrame,
     history_path: str | Path = "xg18.csv",
+    *,
+    target_validation_limit: int | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Build strictly prior-calendar-day xG features for every xgo fixture.
 
@@ -85,15 +87,30 @@ def add_xg18_historical_features(
                 f"examples (MatchID, xgo, xg18): {examples}"
             )
 
+    if target_validation_limit is not None:
+        if (
+            isinstance(target_validation_limit, bool)
+            or not isinstance(target_validation_limit, int)
+            or not 0 <= target_validation_limit <= len(out)
+        ):
+            raise ValueError("target_validation_limit must be an integer row count in range.")
+        validation_out = out.iloc[:target_validation_limit]
+        validation_history = matched_history.iloc[:target_validation_limit]
+    else:
+        validation_out = out
+        validation_history = matched_history
+
+    # Outcome/xG consistency is checked only on pre-final rows. The sealed
+    # Final Test target columns are not inspected before the policy gate.
     for column in ("FTHG", "FTAG", "Home_xG", "Away_xG"):
-        source_values = pd.to_numeric(out[column], errors="coerce").to_numpy(dtype=float)
-        history_values = pd.to_numeric(matched_history[column], errors="coerce").to_numpy(dtype=float)
+        source_values = pd.to_numeric(validation_out[column], errors="coerce").to_numpy(dtype=float)
+        history_values = pd.to_numeric(validation_history[column], errors="coerce").to_numpy(dtype=float)
         if not np.allclose(source_values, history_values, rtol=0.0, atol=1e-6, equal_nan=True):
             mismatch_count = int(
                 (~np.isclose(source_values, history_values, rtol=0.0, atol=1e-6, equal_nan=True)).sum()
             )
             raise ValueError(
-                f"xgo/xg18 {column} mismatch for {mismatch_count} MatchID rows."
+                f"Pre-final xgo/xg18 {column} mismatch for {mismatch_count} MatchID rows."
             )
 
     feature_engine = FeatureEngine(history)
@@ -174,7 +191,8 @@ def add_xg18_historical_features(
         "history_date_max": history.data["Date"].max().isoformat(),
         "xgo_match_id_coverage": 1.0,
         "fixture_identity_verified": True,
-        "target_and_xg_verified": True,
+        "pre_final_target_and_xg_verified": True,
+        "pre_final_target_rows_verified": int(len(validation_out)),
         "historical_feature_count": int(len(historical_columns)),
         "history_rule": "same league; strictly earlier calendar days; same-day matches excluded",
     }
