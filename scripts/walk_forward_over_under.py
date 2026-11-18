@@ -833,6 +833,7 @@ def run_walk_forward(
             ("XG_GOAL_BLEND", p_xg_goal_blend),
             ("NEGATIVE_BINOMIAL", p_negative_binomial),
             ("HIST_GB", p_hgb),
+            ("LOGISTIC", p_logistic),
         ):
             confidence_rows.extend(calculate_confidence_rows(
                 y,
