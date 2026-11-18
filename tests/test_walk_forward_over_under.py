@@ -113,6 +113,10 @@ def test_hist_gradient_boosting_candidate_is_odds_independent_and_calibrated():
         "away_for_mean", "away_against_mean",
         "home_recent_for", "home_recent_against",
         "away_recent_for", "away_recent_against",
+        "home_recent_for_10", "home_recent_against_10",
+        "away_recent_for_10", "away_recent_against_10",
+        "home_recent_for_15", "home_recent_against_15",
+        "away_recent_for_15", "away_recent_against_15",
         "league_average", "home_advantage",
         "home_history_count", "away_history_count",
     )
@@ -258,6 +262,10 @@ def test_prediction_diagnostics_keep_out_of_fold_rows_and_group_error_sources():
         "away_for_mean": [1.2, 1.1, 1.5],
         "home_recent_for": [1.6, 0.7, 1.9],
         "away_recent_for": [1.3, 0.9, 1.6],
+        "home_recent_for_10": [1.5, 0.8, 1.8],
+        "away_recent_for_10": [1.2, 1.0, 1.5],
+        "home_recent_for_15": [1.4, 0.9, 1.7],
+        "away_recent_for_15": [1.1, 1.0, 1.4],
     })
     labels = np.array([1, 0, 1], dtype=int)
     probabilities = np.array([0.82, 0.25, 0.61])
@@ -300,6 +308,10 @@ def test_prediction_diagnostics_reject_misaligned_labels():
         "away_for_mean": [1.1],
         "home_recent_for": [1.2],
         "away_recent_for": [1.1],
+        "home_recent_for_10": [1.2],
+        "away_recent_for_10": [1.1],
+        "home_recent_for_15": [1.2],
+        "away_recent_for_15": [1.1],
     })
 
     try:
