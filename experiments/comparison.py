@@ -60,7 +60,7 @@ def load_dataset(path: Path) -> pd.DataFrame:
 
     frame = pd.read_csv(path, encoding="latin-1", low_memory=False)
     required = [
-        "Date", "League", "HomeTeam", "AwayTeam",
+        "MatchID", "Date", "League", "HomeTeam", "AwayTeam",
         "Home_xG", "Away_xG", "FTHG", "FTAG",
     ]
     missing = [column for column in required if column not in frame.columns]
