@@ -118,6 +118,12 @@ def test_hist_gradient_boosting_candidate_is_odds_independent_and_calibrated():
         "away_recent_for_10", "away_recent_against_10",
         "home_recent_for_15", "home_recent_against_15",
         "away_recent_for_15", "away_recent_against_15",
+        "lambda_home_recent_5", "lambda_away_recent_5",
+        "lambda_total_recent_5", "p_poisson_recent_5",
+        "lambda_home_recent_10", "lambda_away_recent_10",
+        "lambda_total_recent_10", "p_poisson_recent_10",
+        "lambda_home_recent_15", "lambda_away_recent_15",
+        "lambda_total_recent_15", "p_poisson_recent_15",
         "league_average", "home_advantage",
         "home_history_count", "away_history_count",
     )
