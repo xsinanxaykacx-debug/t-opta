@@ -115,6 +115,51 @@ def draw_threshold_curve(labels, probabilities, policy):
     return rows
 
 
+def draw_metrics_at_threshold(labels, probabilities, threshold):
+    """Evaluate a fixed P(DRAW) threshold and expose false-positive counts."""
+    selected = probabilities[:, 1] >= threshold
+    actual_draw = labels == 1
+    tp = int(np.sum(selected & actual_draw))
+    fp = int(np.sum(selected & ~actual_draw))
+    fn = int(np.sum(~selected & actual_draw))
+    selected_count = int(selected.sum())
+    precision = tp / selected_count if selected_count else 0.0
+    recall = tp / max(1, int(actual_draw.sum()))
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    return {
+        "selected_matches": selected_count,
+        "true_positives": tp,
+        "false_positives": fp,
+        "false_negatives": fn,
+        "coverage": round(selected_count / len(labels), 6),
+        "draw_precision": round(precision, 6),
+        "draw_recall": round(recall, 6),
+        "draw_f1": round(f1, 6),
+    }
+
+
+def coverage_precision_recall_curve(labels, probabilities, target_coverages):
+    """Set cutoffs from selection-slice order statistics; ties are included."""
+    if len(labels) == 0:
+        raise ValueError("Coverage analysis requires at least one match.")
+    draw_probabilities = probabilities[:, 1]
+    rows = []
+    for target in target_coverages:
+        if not 0 < target <= 1:
+            raise ValueError(f"Target coverage must be in (0, 1], got {target}.")
+        selected_count = max(1, int(np.ceil(len(labels) * target)))
+        cutoff_index = min(selected_count - 1, len(labels) - 1)
+        threshold = float(np.sort(draw_probabilities)[::-1][cutoff_index])
+        metrics = draw_metrics_at_threshold(labels, probabilities, threshold)
+        rows.append({
+            "target_coverage": round(float(target), 6),
+            "threshold": round(threshold, 8),
+            **metrics,
+            "tie_handling": "include_all_matches_at_or_above_cutoff; realized coverage may exceed target",
+        })
+    return rows
+
+
 def select_threshold(curve):
     """Choose on selection data only; deterministic tie-breaks favor coverage then lower threshold."""
     return max(curve, key=lambda row: (row["draw_f1"], row["coverage"], -row["threshold"]))
@@ -241,6 +286,26 @@ def main():
             "threshold_confirmation": {"matches": len(threshold_confirm), "start": str(threshold_confirm["Date"].min().date()), "end": str(threshold_confirm["Date"].max().date())},
         },
         "draw_feature_weights": feature_weight_report(model),
+        "coverage_precision_recall_analysis": {
+            "purpose": "Describe precision-recall trade-offs at predeclared coverage targets; no single operating point is promoted as a betting rule.",
+            "target_coverages": [0.10, 0.20, 0.30, 0.50],
+            "threshold_method": "For each target, use the kth-highest P(DRAW) on the threshold-selection slice, where k=ceil(n*target). Apply the same numeric threshold unchanged to confirmation.",
+            "tie_handling": "All matches tied at the cutoff are included; realized coverage can exceed the requested target.",
+            "test_data_used": False,
+            "selection_slice": coverage_precision_recall_curve(
+                y_select, p_select, [0.10, 0.20, 0.30, 0.50]
+            ),
+            "confirmation_slice": [
+                {
+                    "target_coverage": row["target_coverage"],
+                    "threshold": row["threshold"],
+                    **draw_metrics_at_threshold(y_confirm, p_confirm, row["threshold"]),
+                }
+                for row in coverage_precision_recall_curve(
+                    y_select, p_select, [0.10, 0.20, 0.30, 0.50]
+                )
+            ],
+        },
         "decision_policy_comparison": {
             "policies": {
                 "argmax_and_threshold": "Select DRAW only when argmax is DRAW and P(DRAW) >= threshold.",
