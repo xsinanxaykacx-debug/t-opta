@@ -89,6 +89,9 @@ def test_league_season_diagnostics_are_descriptive_and_flag_small_samples():
         "high_odds_eligible": [True, True, False],
         "selected_side_odds": [1.8, 2.0, 1.7],
         "selected_side_won": [True, False, True],
+        "market_high_odds_eligible": [True, True, False],
+        "market_selected_odds": [1.8, 2.0, 1.7],
+        "market_side_won": [True, False, True],
     })
     report = bot.segment_diagnostics(predictions)
     league_seasons = report[report["scope"] == "league_season"]
@@ -100,4 +103,6 @@ def test_league_season_diagnostics_are_descriptive_and_flag_small_samples():
     ].iloc[0]
     assert l1_2425["bets_160_250"] == 1
     assert np.isclose(l1_2425["roi_pct"], 80.0)
+    assert l1_2425["market_bets_160_250"] == 1
+    assert np.isclose(l1_2425["market_roi_pct"], 80.0)
 
