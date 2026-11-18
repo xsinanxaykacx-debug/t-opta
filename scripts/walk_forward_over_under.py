@@ -404,6 +404,158 @@ def calculate_confidence_rows(
     return rows
 
 
+
+def build_prediction_diagnostic_rows(
+    validation: pd.DataFrame,
+    y: np.ndarray,
+    model_probabilities: dict[str, np.ndarray],
+    fold: int,
+) -> list[dict]:
+    """Keep row-level, strictly out-of-fold predictions for error analysis."""
+    required = (
+        "Date", "League", "HomeTeam", "AwayTeam",
+        "lambda_home", "lambda_away",
+        "home_history_count", "away_history_count",
+        "home_for_mean", "away_for_mean",
+        "home_recent_for", "away_recent_for",
+    )
+    missing = [column for column in required if column not in validation.columns]
+    if missing:
+        raise ValueError("Prediction diagnostics missing: " + ", ".join(missing))
+
+    frame = validation.loc[:, required].reset_index(drop=True)
+    actual = np.asarray(y, dtype=int)
+    if len(frame) != len(actual):
+        raise ValueError("Prediction diagnostics require aligned validation rows and labels.")
+
+    total_lambda = (
+        frame["lambda_home"].to_numpy(dtype=float)
+        + frame["lambda_away"].to_numpy(dtype=float)
+    )
+    history_depth = np.minimum(
+        frame["home_history_count"].to_numpy(dtype=float),
+        frame["away_history_count"].to_numpy(dtype=float),
+    )
+    recent_delta = (
+        frame["home_recent_for"].to_numpy(dtype=float)
+        + frame["away_recent_for"].to_numpy(dtype=float)
+        - frame["home_for_mean"].to_numpy(dtype=float)
+        - frame["away_for_mean"].to_numpy(dtype=float)
+    )
+    recent_form = np.select(
+        [recent_delta <= -0.15, recent_delta >= 0.15],
+        ["FALLING", "RISING"],
+        default="STABLE",
+    )
+
+    rows = []
+    for model_name, raw_probabilities in model_probabilities.items():
+        probabilities = np.asarray(raw_probabilities, dtype=float)
+        if len(probabilities) != len(actual):
+            raise ValueError(f"{model_name} predictions are not aligned with validation labels.")
+        valid = np.isfinite(probabilities)
+        if not valid.any():
+            continue
+
+        confidence = np.maximum(probabilities, 1.0 - probabilities)
+        predicted = (probabilities >= 0.5).astype(int)
+        confidence_band = pd.cut(
+            confidence,
+            bins=[0.0, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 1.000001],
+            labels=["<55%", "55-60%", "60-65%", "65-70%", "70-75%", "75-80%", "80%+"],
+            include_lowest=True,
+        ).astype(str)
+        lambda_band = pd.cut(
+            total_lambda,
+            bins=[0.0, 2.0, 2.3, 2.6, 2.9, 3.2, 3.6, 4.2, np.inf],
+            labels=["<2.0", "2.0-2.3", "2.3-2.6", "2.6-2.9", "2.9-3.2", "3.2-3.6", "3.6-4.2", "4.2+"],
+            include_lowest=True,
+        ).astype(str)
+        history_band = pd.cut(
+            history_depth,
+            bins=[-0.001, 2, 5, 8, 12, np.inf],
+            labels=["0-2", "3-5", "6-8", "9-12", "13+"],
+        ).astype(str)
+
+        for index in np.flatnonzero(valid):
+            rows.append({
+                "fold": int(fold),
+                "model": model_name,
+                "date": pd.Timestamp(frame.iloc[index]["Date"]).isoformat(),
+                "league": str(frame.iloc[index]["League"]),
+                "home_team": str(frame.iloc[index]["HomeTeam"]),
+                "away_team": str(frame.iloc[index]["AwayTeam"]),
+                "actual_over": int(actual[index]),
+                "predicted_over": int(predicted[index]),
+                "correct": int(predicted[index] == actual[index]),
+                "probability_over": float(probabilities[index]),
+                "confidence": float(confidence[index]),
+                "predicted_side": "OVER" if predicted[index] else "UNDER",
+                "confidence_band": str(confidence_band[index]),
+                "total_lambda": float(total_lambda[index]),
+                "total_lambda_band": str(lambda_band[index]),
+                "history_depth": float(history_depth[index]),
+                "history_band": str(history_band[index]),
+                "recent_form_delta": float(recent_delta[index]),
+                "recent_form": str(recent_form[index]),
+            })
+    return rows
+
+
+def aggregate_prediction_diagnostics(predictions: pd.DataFrame) -> pd.DataFrame:
+    """Summarize out-of-fold errors by league, side, confidence and team context."""
+    if predictions.empty:
+        return pd.DataFrame(columns=[
+            "fold", "model", "dimension", "bucket", "matches",
+            "correct", "accuracy", "error_rate", "mean_confidence",
+            "mean_total_lambda",
+        ])
+
+    dimensions = {
+        "LEAGUE": "league",
+        "SIDE": "predicted_side",
+        "CONFIDENCE": "confidence_band",
+        "TOTAL_LAMBDA": "total_lambda_band",
+        "HISTORY_DEPTH": "history_band",
+        "RECENT_FORM": "recent_form",
+    }
+    frames = []
+    for dimension, column in dimensions.items():
+        grouped = predictions.groupby(
+            ["fold", "model", column],
+            dropna=False,
+            observed=True,
+        ).agg(
+            matches=("correct", "size"),
+            correct=("correct", "sum"),
+            mean_confidence=("confidence", "mean"),
+            mean_total_lambda=("total_lambda", "mean"),
+        ).reset_index().rename(columns={column: "bucket"})
+        grouped["dimension"] = dimension
+        grouped["accuracy"] = grouped["correct"] / grouped["matches"]
+        grouped["error_rate"] = 1.0 - grouped["accuracy"]
+        frames.append(grouped[[
+            "fold", "model", "dimension", "bucket", "matches",
+            "correct", "accuracy", "error_rate", "mean_confidence",
+            "mean_total_lambda",
+        ]])
+
+    detail = pd.concat(frames, ignore_index=True)
+    pooled = detail.loc[detail["fold"] != 0].groupby(
+        ["model", "dimension", "bucket"],
+        dropna=False,
+        observed=True,
+    ).agg(
+        matches=("matches", "sum"),
+        correct=("correct", "sum"),
+        mean_confidence=("mean_confidence", "mean"),
+        mean_total_lambda=("mean_total_lambda", "mean"),
+    ).reset_index()
+    pooled["fold"] = 0
+    pooled["accuracy"] = pooled["correct"] / pooled["matches"]
+    pooled["error_rate"] = 1.0 - pooled["accuracy"]
+    return pd.concat([detail, pooled[detail.columns]], ignore_index=True)
+
 def load_development_data(path: str | Path) -> pd.DataFrame:
     """Load and clean history, then cap it before feature generation."""
     frame = pd.read_csv(path, encoding="latin-1", low_memory=False)
@@ -446,6 +598,7 @@ def run_walk_forward(
     metric_rows = []
     policy_rows = []
     confidence_rows = []
+    prediction_rows = []
     oof = {
         "y": [], "blend": [], "historical_xg": [], "market": [],
         "poisson": [], "poisson_cal": [], "poisson_platt": [], "goal_poisson": [], "xg_goal_blend": [], "negative_binomial": [], "hgb": [],
@@ -483,6 +636,23 @@ def run_walk_forward(
         p_xg_goal_blend = np.clip(0.5 * p_poisson + 0.5 * p_goal_poisson, 1e-6, 1.0 - 1e-6)
         p_negative_binomial = negative_binomial_model.predict_proba(validation)
         p_market, over_odds, under_odds, market_valid = market_data(validation)
+
+        prediction_rows.extend(build_prediction_diagnostic_rows(
+            validation,
+            y,
+            {
+                "BLEND_RESEARCH": p_blend,
+                "HISTORICAL_XG": p_historical,
+                "POISSON": p_poisson,
+                "POISSON_CAL": p_poisson_cal,
+                "POISSON_PLATT": p_poisson_platt,
+                "GOAL_POISSON": p_goal_poisson,
+                "XG_GOAL_BLEND": p_xg_goal_blend,
+                "NEGATIVE_BINOMIAL": p_negative_binomial,
+                "HIST_GB": p_hgb,
+            },
+            fold_number,
+        ))
 
         # Calibrated Poisson-only candidate: no bookmaker odds in its features.
         poisson_calibrator = IsotonicRegression(
@@ -681,18 +851,24 @@ def run_walk_forward(
         ))
 
     confidence = pd.DataFrame(confidence_rows)
+    prediction_diagnostics = pd.DataFrame(prediction_rows)
+    error_analysis = aggregate_prediction_diagnostics(prediction_diagnostics)
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     metrics.to_csv(output_dir / "walk_forward_metrics.csv", index=False, encoding="utf-8-sig")
     policies.to_csv(output_dir / "walk_forward_policy_roi.csv", index=False, encoding="utf-8-sig")
     confidence.to_csv(output_dir / "walk_forward_confidence.csv", index=False, encoding="utf-8-sig")
+    prediction_diagnostics.to_csv(output_dir / "walk_forward_predictions.csv", index=False, encoding="utf-8-sig")
+    error_analysis.to_csv(output_dir / "walk_forward_error_analysis.csv", index=False, encoding="utf-8-sig")
     odds_provenance.to_csv(output_dir / "walk_forward_odds_provenance.csv", index=False, encoding="utf-8-sig")
 
     print("\nOOF metrics (fold=0 is pooled out-of-fold):")
     print(metrics.loc[metrics["fold"] == 0].to_string(index=False))
     print("\nOOF selective accuracy (fold=0 is pooled out-of-fold):")
     print(confidence.loc[confidence["fold"] == 0].to_string(index=False))
+    print("\\nPooled out-of-fold error analysis (fold=0):")
+    print(error_analysis.loc[error_analysis["fold"] == 0].sort_values(["model", "dimension", "matches"], ascending=[True, True, False]).to_string(index=False))
     print("\\nOdds provenance audit (TRAIN rows only):")
     print(odds_provenance.to_string(index=False))
     print(f"\nReports saved to: {output_dir.resolve()}")
