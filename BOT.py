@@ -910,7 +910,7 @@ def select_edge_threshold(results):
 # 10. ANA AKIŞ
 # ============================================================
 
-def main(path):
+def main(path, skip_final_test=False):
 
     print("\nCSV okunuyor...")
 
@@ -1141,45 +1141,52 @@ def main(path):
         )
 
     # --------------------------------------------------------
-    # Final test
-    # --------------------------------------------------------
-
-    print("\n" + "#" * 78)
-
-    print(
-        "FINAL TEST — TEK SEFERLİK BAĞIMSIZ DEĞERLENDİRME"
-    )
-
-    print("#" * 78)
-
-    evaluate(
-        "FINAL TEST",
-        test,
-        model
-    )
-
-    if chosen_threshold is not None:
-
-        value_bet_analysis(
-            test,
-            model,
-            "FINAL TEST",
-            thresholds=(chosen_threshold,)
+    # Final test is deliberately skipped by CI's policy-only mode.
+    if skip_final_test:
+        print(
+            "\nPOLICY-ONLY MODE: FINAL TEST SEALED — NOT ACCESSED"
         )
-
-        run_diagnostics(
-            df=test,
-            model=model,
-            label="FINAL_TEST",
-            threshold=chosen_threshold,
-            market_data_fn=market_data,
-        )
-
     else:
+        # Final test
+        # --------------------------------------------------------
+
+        print("\n" + "#" * 78)
 
         print(
-            "\nFINAL TEST BAHİS POLİTİKASI: NO BET"
+            "FINAL TEST — TEK SEFERLİK BAĞIMSIZ DEĞERLENDİRME"
         )
+
+        print("#" * 78)
+
+        evaluate(
+            "FINAL TEST",
+            test,
+            model
+        )
+
+        if chosen_threshold is not None:
+
+            value_bet_analysis(
+                test,
+                model,
+                "FINAL TEST",
+                thresholds=(chosen_threshold,)
+            )
+
+            run_diagnostics(
+                df=test,
+                model=model,
+                label="FINAL_TEST",
+                threshold=chosen_threshold,
+                market_data_fn=market_data,
+            )
+
+        else:
+
+            print(
+                "\nFINAL TEST BAHİS POLİTİKASI: NO BET"
+            )
+
 
     print("\n" + "=" * 70)
 
@@ -1200,17 +1207,22 @@ def main(path):
 
 if __name__ == "__main__":
 
-    if len(sys.argv) != 2:
+    if len(sys.argv) not in (2, 3) or (
+        len(sys.argv) == 3 and sys.argv[2] != "--policy-only"
+    ):
 
         print(
-            "Kullanım: python bot.py xgo.csv"
+            "Kullanım: python BOT.py xgo.csv [--policy-only]"
         )
 
         sys.exit(1)
 
     try:
 
-        main(sys.argv[1])
+        main(
+            sys.argv[1],
+            skip_final_test=(len(sys.argv) == 3)
+        )
 
     except Exception as exc:
 
