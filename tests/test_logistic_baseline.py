@@ -51,7 +51,7 @@ def test_model_rejects_identity_and_target_leakage_columns():
 
 
 def test_model_rejects_non_chronological_training_schema():
-    features, labels = make_training_data().copy()
+    features, labels = make_training_data()
     features = features.drop(columns="match_date")
     with pytest.raises(ValueError, match="match_date"):
         LogisticBaseline().fit(features, labels)
