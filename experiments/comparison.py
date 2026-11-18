@@ -211,7 +211,7 @@ def choose_confidence_policy(
     if not candidates:
         return None
     # Maximise selection coverage on POLICY_SELECT, then hit rate.
-    return max(candidates, key=lambda item: (item["bets"], item["hit_rate"]))
+    return max(candidates, key=lambda item: (item["hit_rate"], item["bets"]))
 
 
 def selective_metrics(
@@ -509,7 +509,7 @@ def run_experiment(data_path: Path, output_dir: Path) -> dict[str, Any]:
     selected_model = (
         max(
             eligible_candidates,
-            key=lambda item: (item[1]["bets"], item[1]["hit_rate"]),
+            key=lambda item: (item[1]["hit_rate"], item[1]["bets"]),
         )[0]
         if eligible_candidates
         else None
