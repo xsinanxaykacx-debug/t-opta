@@ -46,7 +46,10 @@ SEALED_PARTITIONS = frozenset({"final_test"})
 
 # Closing prices are post-market information and are audit-only.
 CLOSING_ODDS_COLUMNS = frozenset(
-    {"avgc", "b365c", "maxc", "pc"}
+    {
+        "avgc", "b365c", "maxc", "pc",
+        "odds_avgc", "odds_b365c", "odds_maxc", "odds_pc",
+    }
 )
 
 # Match outcomes, half-time outcomes, and post-match statistics are never
@@ -71,17 +74,26 @@ POST_MATCH_COLUMNS = frozenset(
 # prefix. Source-specific feature names should be explicitly reviewed and
 # passed through approved_features.
 SAFE_FEATURE_PREFIXES = (
-    "odds_",
     "hist_",
     "rolling_",
     "form_",
     "pre_match_",
 )
 
+# Verified xgo.csv pre-match Over/Under 2.5 quote columns. Closing variants
+# such as odds_AvgC>2.5 and odds_B365C<2.5 are deliberately absent.
 APPROVED_OPENING_OR_CURRENT_ODDS = frozenset(
     {
-        "odds_avg",
-        "odds_b365",
+        "odds_avg>2.5",
+        "odds_avg<2.5",
+        "odds_b365>2.5",
+        "odds_b365<2.5",
+        "odds_max>2.5",
+        "odds_max<2.5",
+        "odds_p>2.5",
+        "odds_p<2.5",
+        "odds_bfe>2.5",
+        "odds_bfe<2.5",
     }
 )
 
@@ -101,6 +113,16 @@ def _is_post_match_column(normalised_name: str) -> bool:
         return True
     if normalised_name in POST_MATCH_COLUMNS:
         return True
+
+    # xgo.csv stores closing prices with the same odds_ prefix as current
+    # prices (e.g. odds_AvgC>2.5). Strip the market side, then detect the
+    # closing marker before applying the allowlist.
+    odds_token = normalised_name
+    if odds_token.startswith("odds_"):
+        odds_token = odds_token[5:]
+        odds_token = odds_token.split(">", 1)[0].split("<", 1)[0]
+        if odds_token in {"avgc", "b365c", "maxc", "pc"}:
+            return True
 
     # Common source variants for full-time / half-time result fields.
     compact = normalised_name.replace("_", "").replace(" ", "")
@@ -268,8 +290,9 @@ def validate_partition_dates(
     partition_dates: Mapping[str, Sequence[Any]],
 ) -> None:
     """Validate row order inside each partition and strict date progression
-    between adjacent partitions. Equal dates across a boundary are rejected
-    to prevent same-timestamp fixtures from being split across partitions.
+    between adjacent partitions. Equal timestamps may occur at a row-count boundary;
+    row-index disjointness is enforced separately, and same-day historical
+    features must remain isolated by the feature engine.
     """
     if tuple(partition_dates) != PARTITION_ORDER:
         raise ProtocolError(
@@ -286,10 +309,9 @@ def validate_partition_dates(
         last_date = dates[-1]
         if previous_last is not None:
             try:
-                if first_date <= previous_last:
+                if first_date < previous_last:
                     raise ProtocolError(
-                        f"{partition} does not start strictly after the "
-                        "previous partition ends."
+                        f"{partition} starts before the previous partition ends."
                     )
             except TypeError as exc:
                 raise ProtocolError(
