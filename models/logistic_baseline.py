@@ -1,3 +1,4 @@
+
 """Leakage-safe multinomial Logistic Regression baseline for 1X2."""
 from __future__ import annotations
 
@@ -86,7 +87,7 @@ class LogisticBaseline:
             transformers.append(("categorical", categorical_pipeline, categorical))
         preprocess = ColumnTransformer(transformers=transformers, remainder="drop")
         classifier = LogisticRegression(
-            C=float(c_value), solver="lbfgs", penalty="l2", max_iter=max_iter,
+            C=float(c_value), solver="lbfgs", max_iter=max_iter,
         )
         return Pipeline([("preprocess", preprocess), ("classifier", classifier)])
 
@@ -166,7 +167,6 @@ class LogisticBaseline:
         if len(frame) != len(y) or len(y) == 0 or not np.isin(y, [0, 1, 2]).all():
             raise ValueError("Invalid calibration labels or feature count.")
         probabilities = self._ordered_probabilities(self.pipeline_, frame)
-        # Deterministic bounded golden-section search over T in [0.05, 20].
         left, right = math.log(0.05), math.log(20.0)
         ratio = (math.sqrt(5.0) - 1.0) / 2.0
         x1 = right - ratio * (right - left)
