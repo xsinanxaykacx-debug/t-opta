@@ -150,6 +150,13 @@ function renderRankedPanels(matches){
   });
   $('rankedPanels').classList.remove('hidden');
 }
+function bandLabel(probability){
+  const value=Number(probability);
+  if(value>=80 && value<=100) return 'YEŞİL BANT';
+  if(value>=60 && value<80) return 'TURUNCU BANT';
+  if(value>=50 && value<60) return 'MAVİ BANT';
+  return '%50 ALTI';
+}
 function renderMatch(m){
   const cls = 'match';
   return `
@@ -161,7 +168,7 @@ function renderMatch(m){
       ${['1','X','2'].map((k,i)=>`<div class="bg-slate-950 rounded-lg p-2"><div class="text-[10px] muted">MS ${k}</div><div class="font-mono font-bold">${Number(m.odds[k]).toFixed(2)}</div><div class="text-xs text-slate-400 mt-1">${pct(m.probabilities_pct[k])}</div></div>`).join('')}
     </div>
     <div class="flex flex-wrap justify-between items-center gap-2 mt-3 text-xs">
-      <span class="text-emerald-300 font-semibold">${esc(m.favorite)} · ${pct(m.favorite_probability_pct)} · ${esc(m.probability_band)}</span>
+      <span class="text-emerald-300 font-semibold">${esc(m.favorite)} · ${pct(m.favorite_probability_pct)} · ${bandLabel(m.favorite_probability_pct)}</span>
     </div>
     <div class="mt-2 text-[10px] muted flex justify-between gap-2"><span>Oran çekim: ${esc(m.odds_captured_at)}</span>${m.match_url ? `<a class="underline hover:text-white" target="_blank" rel="noreferrer" href="${esc(m.match_url)}">Maçkolik'te aç</a>` : ''}</div>
   </article>`;
