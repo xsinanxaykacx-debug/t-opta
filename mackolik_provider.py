@@ -75,13 +75,13 @@ def _is_womens_fixture(home: str, away: str, league: str) -> bool:
     # Maçkolik commonly marks women's teams with (K); international feeds
     # also use Women/Women's, Ladies, Female, Girls and Turkish labels.
     markers = (
-        r"\\(\\s*k\\s*\\)",
-        r"\\bwomen(?:'s)?\\b",
-        r"\\bladies\\b",
-        r"\\bfemale\\b",
-        r"\\bgirls?\\b",
-        r"\\bkad\\u0131n(?:lar)?\\b",
-        r"\\bkiz(?:lar)?\\b",
+        r"\(\s*k\s*\)",
+        r"\bwomen(?:'s)?\b",
+        r"\bladies\b",
+        r"\bfemale\b",
+        r"\bgirls?\b",
+        r"\bkadın(?:lar)?\b",
+        r"\bkız(?:lar)?\b",
     )
     return any(re.search(pattern, labels) for pattern in markers)
 
