@@ -237,23 +237,46 @@ def _outcome_calibration_rows(data: pd.DataFrame, partition: str) -> list[dict]:
             })
     return rows
 
-def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, simulations: int = 50,
+def _select_candidate_bands(discovery: pd.DataFrame, minimum_matches: int = 50,
+                            minimum_hit_rate: float = 0.75) -> list[dict]:
+    """Choose reliable-looking bands on discovery only; validation remains untouched."""
+    selected = []
+    for label, lower, upper in zip(PROBABILITY_BAND_LABELS, PROBABILITY_BINS[:-1], PROBABILITY_BINS[1:]):
+        subset = discovery.loc[
+            (discovery["favorite_probability"] >= lower)
+            & (discovery["favorite_probability"] < upper)
+        ]
+        count = len(subset)
+        hit_rate = float(subset["favorite_correct"].mean()) if count else float("nan")
+        if count >= minimum_matches and hit_rate >= minimum_hit_rate:
+            selected.append({
+                "band": label, "lower": float(lower), "upper": float(upper),
+                "discovery_matches": int(count), "discovery_hit_rate": hit_rate,
+            })
+    return selected
+
+
+def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_bands: list[dict], simulations: int = 50,
                         group_size: int = 10, legs_per_coupon: int = 3,
                         stake_per_coupon: float = 100.0, seed: int = 20261119) -> dict:
-    """Evaluate discovery-selected 71-90.99% favorite bands on validation only."""
-    # Discovery selected 71-80.99% and 81-90.99%; exclude weak 60-70 and sparse 91+.
-    candidates = validation.loc[
-        (validation["favorite_probability"] >= 0.71)
-        & (validation["favorite_probability"] < 0.91)
-    ].copy()
+    """Evaluate only bands that passed the discovery selection gate."""
+    selected_mask = np.zeros(len(validation), dtype=bool)
+    for band in selected_bands:
+        selected_mask |= (
+            (validation["favorite_probability"].to_numpy() >= band["lower"])
+            & (validation["favorite_probability"].to_numpy() < band["upper"])
+        )
+    candidates = validation.loc[selected_mask].copy()
     candidates = candidates.sort_values("Date").reset_index(drop=True)
     columns = ["simulation", "candidate_pool", "correct_of_10", "group_hit_rate",
                "coupon1_won", "coupon2_won", "coupon3_won", "winning_coupons",
                "total_return", "total_stake", "net_result", "any_coupon_won"]
     if len(candidates) < group_size:
         pd.DataFrame(columns=columns).to_csv(output_dir / "market_1x2_coupon_simulations.csv", index=False)
-        return {"status": "insufficient_validation_matches", "candidate_matches": int(len(candidates)),
-                "minimum_required": group_size, "simulations_requested": simulations}
+        status = "no_discovery_band_passed" if not selected_bands else "insufficient_validation_matches"
+        return {"status": status, "candidate_matches": int(len(candidates)),
+                "minimum_required": group_size, "simulations_requested": simulations,
+                "selected_bands": selected_bands}
     rng = np.random.default_rng(seed)
     odds_columns = ("odds_home", "odds_draw", "odds_away")
     rows = []
@@ -290,7 +313,7 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, simulations:
     result.to_csv(output_dir / "market_1x2_coupon_simulations.csv", index=False)
     return {
         "status": "completed", "simulation_count": simulations,
-        "candidate_matches": int(len(candidates)), "group_size": group_size,
+        "candidate_matches": int(len(candidates)), "selected_bands": selected_bands, "group_size": group_size,
         "coupons_per_group": 3, "legs_per_coupon": legs_per_coupon,
         "unused_match_per_group": group_size - 3 * legs_per_coupon,
         "stake_per_coupon": stake_per_coupon, "stake_per_group": total_stake,
@@ -302,7 +325,7 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, simulations:
         "mean_net_result": float(result["net_result"].mean()),
         "profitable_groups": int((result["net_result"] > 0).sum()),
         "break_even_or_better_groups": int((result["net_result"] >= 0).sum()),
-        "candidate_band_policy": "Selected using discovery only: include 71.00%-90.99%; exclude 60.00%-70.99% as weaker and 91.00%-100.00% as too sparse in validation.",
+        "candidate_band_policy": "Discovery-only gate: include bands with at least 50 discovery matches and at least 75% favorite hit rate; evaluate those selected bands on validation.",
         "simulation_note": "50 independently drawn groups sampled without replacement within each group from validation favorites in the discovery-selected 71.00%-90.99% bands; groups may overlap between draws. Three 3-leg coupons per group, 100 TL stake each; the 10th match is unused. Actual odds of the selected favorite are used. Historical out-of-sample simulation only, not a forecast.",
     }
 
@@ -391,7 +414,8 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
         output_dir / "market_1x2_calibration_summary.csv", index=False
     )
 
-    coupon_simulation = _coupon_simulations(validation, output_dir)
+    selected_candidate_bands = _select_candidate_bands(discovery)
+    coupon_simulation = _coupon_simulations(validation, output_dir, selected_candidate_bands)
     overall = {
         "method": "raw implied probabilities: 1 / decimal odds per outcome; no normalization and no margin removal",
         "selected_odds_source": source_info,
@@ -406,6 +430,7 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
         "actual_class_counts_validation": {name: int((validation["actual_code"] == code).sum()) for code, name in enumerate(("home", "draw", "away"))},
         "raw_probability_definition": "Each outcome probability equals 1 / its decimal odds. Values are intentionally not normalized and can sum above 100% because bookmaker margin is retained.",
         "favorite_probability_bands": list(PROBABILITY_BAND_LABELS),
+        "selected_candidate_bands_from_discovery": selected_candidate_bands,
         "coupon_simulation": coupon_simulation,
     }
     (output_dir / "market_1x2_summary.json").write_text(
