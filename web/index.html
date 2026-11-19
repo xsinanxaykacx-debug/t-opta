@@ -11,7 +11,6 @@
     .muted{color:#94a3b8}
     .pill{border:1px solid #334155;border-radius:999px;padding:4px 10px;font-size:11px}
     .match{border:1px solid #263449;background:#080e1a;border-radius:13px;padding:14px}
-    .eligible{border-color:rgba(16,185,129,.55)}
     .featured-panel{border:1px solid rgba(249,115,22,.65);background:linear-gradient(145deg,rgba(124,45,18,.24),rgba(15,23,42,.96) 58%);border-radius:16px;padding:16px;margin-bottom:22px;box-shadow:0 10px 30px rgba(194,65,12,.08)}
     .rank-panel{border-radius:16px;padding:16px;margin-bottom:18px}
     .rank-green{border:1px solid rgba(34,197,94,.55);background:linear-gradient(145deg,rgba(20,83,45,.25),rgba(15,23,42,.96) 58%)}
@@ -77,8 +76,7 @@
 
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><div class="text-[10px] muted uppercase">Oranı alınan maç</div><div id="totalCount" class="text-2xl font-bold mt-1">-</div></div>
-        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><div class="text-[10px] muted uppercase">Kriteri geçen</div><div id="eligibleCount" class="text-2xl font-bold text-emerald-400 mt-1">-</div></div>
-        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><div class="text-[10px] muted uppercase">Kupon grubu</div><div id="couponStatus" class="text-sm font-bold mt-2">-</div></div>
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><div class="text-[10px] muted uppercase">Kartlara giren</div><div id="bandCount" class="text-2xl font-bold mt-1">-</div></div>
         <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><div class="text-[10px] muted uppercase">Veri kaynağı</div><div class="text-lg font-bold mt-1">Maçkolik</div></div>
       </div>
 
@@ -100,9 +98,6 @@ function renderRankedPick(item, rank){
   const m=item.match, outcome=item.outcome, probability=item.probability;
   const color=rank===1?'text-green-300':rank===2?'text-orange-300':'text-blue-300';
   const border=rank===1?'border-green-300/20':rank===2?'border-orange-300/20':'border-blue-300/20';
-  const history=m.eligible
-    ? '<span class="text-[10px] text-green-300">Tarihsel seçim filtresini geçti</span>'
-    : '<span class="text-[10px] text-slate-400">Tarihsel seçim filtresini geçmedi</span>';
   return `
   <article class="rank-pick">
     <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
@@ -118,10 +113,17 @@ function renderRankedPick(item, rank){
       ${[['1','MS1'],['X','MSX'],['2','MS2']].map(([key,label])=>`<div class="rounded-lg border border-slate-700/60 bg-slate-950/70 p-2"><div class="text-[10px] text-slate-400">${label}</div><div class="text-sm font-bold text-slate-100">${pct(m.probabilities_pct[key])}</div><div class="text-[10px] text-slate-500">Oran ${Number(m.odds[key]).toFixed(2)}</div></div>`).join('')}
     </div>
     <div class="flex flex-wrap items-center justify-between gap-2 mt-3 pt-2 border-t border-slate-700/50">
-      ${history}
+      <span class="text-[10px] text-slate-400">En yüksek piyasa olasılığı</span>
       ${m.match_url ? `<a class="text-xs text-slate-300 underline hover:text-white" target="_blank" rel="noreferrer" href="${esc(m.match_url)}">Maçkolik'te aç</a>` : ''}
     </div>
   </article>`;
+}
+function bandsTotal(matches){
+  return matches.filter(match=>{
+    const values=[Number(match.probabilities_pct['1']),Number(match.probabilities_pct.X),Number(match.probabilities_pct['2'])];
+    const highest=Math.max(...values);
+    return highest>=50 && highest<=100;
+  }).length;
 }
 function renderRankedPanels(matches){
   // Her maçta yalnızca en yüksek 1X2 olasılığını seç; rengi olasılık bandı belirler.
@@ -149,22 +151,17 @@ function renderRankedPanels(matches){
   $('rankedPanels').classList.remove('hidden');
 }
 function renderMatch(m){
-  const cls = m.eligible ? 'match eligible' : 'match';
-  const badge = m.eligible
-    ? '<span class="pill text-emerald-300 border-emerald-800">SEÇİM KRİTERİNİ GEÇTİ</span>'
-    : '<span class="pill text-slate-400">KRİTER DIŞI</span>';
+  const cls = 'match';
   return `
   <article class="${cls}">
     <div class="flex flex-wrap justify-between items-start gap-2 mb-3">
       <div><div class="text-xs muted">${esc(m.time)} · ${esc(m.league)}</div><div class="font-bold mt-1">${esc(m.home)} <span class="muted font-normal">-</span> ${esc(m.away)}</div></div>
-      ${badge}
     </div>
     <div class="grid grid-cols-3 gap-2 text-center">
       ${['1','X','2'].map((k,i)=>`<div class="bg-slate-950 rounded-lg p-2"><div class="text-[10px] muted">MS ${k}</div><div class="font-mono font-bold">${Number(m.odds[k]).toFixed(2)}</div><div class="text-xs text-slate-400 mt-1">${pct(m.probabilities_pct[k])}</div></div>`).join('')}
     </div>
     <div class="flex flex-wrap justify-between items-center gap-2 mt-3 text-xs">
       <span class="text-emerald-300 font-semibold">${esc(m.favorite)} · ${pct(m.favorite_probability_pct)} · ${esc(m.probability_band)}</span>
-      <span class="muted">${esc(m.selection_note)}</span>
     </div>
     <div class="mt-2 text-[10px] muted flex justify-between gap-2"><span>Oran çekim: ${esc(m.odds_captured_at)}</span>${m.match_url ? `<a class="underline hover:text-white" target="_blank" rel="noreferrer" href="${esc(m.match_url)}">Maçkolik'te aç</a>` : ''}</div>
   </article>`;
@@ -185,22 +182,17 @@ async function loadFixtures(){
     if(!response.ok || data.status !== 'success') throw new Error(data.message || 'Veri alınamadı');
     $('matchCount').textContent = data.fixtures_found + ' maç';
     $('totalCount').textContent = data.fixtures_with_odds;
-    $('eligibleCount').textContent = data.eligible_picks;
-    $('couponStatus').textContent = data.coupon_ready ? '10 maçlık grup hazır' : '10 maç yok';
-    $('status').textContent = data.message;
+    $('status').textContent = `${data.fixtures_found} maç bulundu, ${data.fixtures_with_odds} maçın oranı alındı. Olasılıklar renk bantlarına göre sınıflandırıldı.`;
     $('updated').textContent = 'Son kontrol: ' + new Date().toLocaleString('tr-TR') + ' · Kaynak: Maçkolik';
     if(!data.matches.length){$('empty').classList.remove('hidden');return;}
 
     renderRankedPanels(data.matches);
+    $('bandCount').textContent = bandsTotal(data.matches);
 
     const files = [
-      ['upcoming_market_picks.csv','Seçim listesini indir'],
-      ['all_upcoming_market_favorites.csv','Tüm maç analizini indir'],
+      ['all_upcoming_market_favorites.csv','Tüm maç olasılıklarını indir'],
       ['upcoming_prediction_summary.json','Analiz raporunu indir']
     ];
-    if(data.coupon_ready){
-      files.push(['upcoming_coupons.csv','Kupon ayaklarını indir'],['upcoming_coupon_summary.csv','Kupon özetini indir']);
-    }
     $('downloadLinks').classList.remove('hidden');
     $('downloadLinks').innerHTML = files.map(([file,label])=>`<a class="text-xs text-emerald-300 underline hover:text-white" href="/outputs/${file}">${label}</a>`).join('');
     $('leagueList').innerHTML = data.leagues.map(group=>`
