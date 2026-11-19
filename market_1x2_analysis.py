@@ -299,21 +299,31 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
             "eligible_match_dates": 0,
             "minimum_matches_per_date": group_size,
             "simulations_requested": simulations,
+            "unique_fixture_groups": 0,
+            "duplicate_fixture_group_draws": 0,
+            "distinct_fixtures_used": 0,
             "selected_bands": selected_bands,
         }
 
     rng = np.random.default_rng(seed)
     odds_columns = ("odds_home", "odds_draw", "odds_away")
     rows = []
+    fixture_group_keys = []
+    fixtures_used = set()
     for simulation in range(1, simulations + 1):
         # Each simulated coupon day is selected first; all 10 fixtures must share that date.
         day_index = int(rng.integers(0, len(day_pools)))
         match_date, day_candidates = day_pools[day_index]
         indices = rng.choice(len(day_candidates), size=group_size, replace=False)
-        group = day_candidates.iloc[indices].reset_index(drop=True)
+        fixture_group_keys.append((str(match_date), tuple(sorted(int(index) for index in indices))))
+        fixtures_used.update((str(match_date), int(index)) for index in indices)
+        group = day_candidates.iloc[indices].sort_values(
+            "favorite_probability", ascending=False, kind="stable"
+        ).reset_index(drop=True)
         coupons = []
         for coupon_index in range(3):
-            coupon = group.iloc[coupon_index * legs_per_coupon:(coupon_index + 1) * legs_per_coupon]
+            coupon_indices = [coupon_index + leg * 3 for leg in range(legs_per_coupon)]
+            coupon = group.iloc[coupon_indices]
             leg_odds, leg_hits = [], []
             for _, match in coupon.iterrows():
                 favorite = int(match["market_favorite"])
@@ -358,7 +368,7 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
         "profitable_groups": int((result["net_result"] > 0).sum()),
         "break_even_or_better_groups": int((result["net_result"] >= 0).sum()),
         "candidate_band_policy": "Discovery-only gate applied independently to each probability-band and favorite-type pair: at least 50 matches and at least 75% favorite hit rate; only matching MS1/MSX/MS2 pairs are carried into validation and upcoming picks.",
-        "simulation_note": "50 independently drawn same-calendar-day groups. Each group contains 10 distinct validation fixtures from one date in discovery-selected probability bands; groups may overlap between simulations. Three 3-leg coupons per group, 100 TL stake each; the 10th match is unused. Actual odds of the selected favorite are used. Historical out-of-sample simulation only, not a forecast.",
+        "simulation_note": "Each draw contains 10 distinct validation fixtures from one date in discovery-selected band/type pairs. Groups may overlap; unique_fixture_groups and duplicate_fixture_group_draws expose repeated fixture sets. Fixtures are sorted by favorite probability and interleaved into three 3-leg coupons exactly like the upcoming picker; the 10th match is unused. Actual odds of the selected favorite are used. Historical out-of-sample simulation only, not a forecast.",
     }
 
 def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
