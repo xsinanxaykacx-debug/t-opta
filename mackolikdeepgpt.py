@@ -167,7 +167,7 @@ ISTEK_HEADERS = {
 # Excel/model veri seti: 8 maç bilgisi + 7 oran = 15 sütun.
 # Maç ID'si eşleştirme için checkpoint içinde tutulur, Excel'e yazılmaz.
 MAC_KOLONLARI = [
-    "Tarih", "Lig/Sezon", "Ev Sahibi", "Deplasman",
+    "Tarih", "Lig", "Sezon", "Ev Sahibi", "Deplasman",
     "İY Skor", "İY Sonucu", "Skor", "Maç Sonucu"
 ]
 
@@ -1321,6 +1321,20 @@ def ilk_yari_skoru_scriptlerde_ara(soup):
     return "", ""
 
 
+def _lig_sezonu_ayir(lig_sezon):
+    """'İtalya Serie A 2019/2020' metnini lig ve sezon olarak ayırır."""
+    metin = metin_temizle(lig_sezon)
+    eslesen = re.search(
+        r"(?<!\d)((?:19|20)\d{2}\s*/\s*(?:(?:19|20)\d{2}|\d{2}))(?!\d)\s*$",
+        metin,
+    )
+    if not eslesen:
+        return metin, ""
+    sezon = re.sub(r"\s+", "", eslesen.group(1))
+    lig = metin[:eslesen.start()].strip(" -–—|")
+    return lig, sezon
+
+
 def arsiv_mac_bilgisi_cikar(soup, row):
     """Model için gereken temel maç bilgilerini çıkarır."""
     info = soup.select_one(".match-info-wrapper")
@@ -1329,7 +1343,8 @@ def arsiv_mac_bilgisi_cikar(soup, row):
 
     sonuc = {}
     lig = info.select_one(".match-info-wrapper-season a")
-    sonuc["Lig/Sezon"] = metin_temizle(lig.get_text(" ", strip=True)) if lig else ""
+    lig_metin = metin_temizle(lig.get_text(" ", strip=True)) if lig else ""
+    sonuc["Lig"], sonuc["Sezon"] = _lig_sezonu_ayir(lig_metin)
 
     tarih_el = info.select_one(".match-info-date")
     tarih_metin = metin_temizle(tarih_el.get_text(" ", strip=True)) if tarih_el else ""
