@@ -236,7 +236,7 @@ def main() -> None:
     parser.add_argument("csv", type=Path)
     parser.add_argument("--out", type=Path, default=Path("results_market_1x2"))
     args = parser.parse_args()
-    frame = pd.read_csv(args.csv, low_memory=False)
+    frame = pd.read_csv(args.csv, encoding="latin-1", low_memory=False)
     report = build_reports(frame, args.out)
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
