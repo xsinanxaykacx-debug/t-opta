@@ -10,8 +10,8 @@ def _frame(n=120):
     return pd.DataFrame({
         "Date": dates,
         "League": ["L1" if i % 2 else "L2" for i in range(n)],
-        "FTHG": [2 if i % 3 == 0 else (0 if i % 3 == 1 else 1) for i in range(n)],
-        "FTAG": [0 if i % 3 == 0 else (0 if i % 3 == 1 else 2) for i in range(n)],
+        "FTHG": [2] * n,
+        "FTAG": [0] * n,
         "AvgH": [1.3] * n,
         "AvgD": [4.0] * n,
         "AvgA": [5.0] * n,
@@ -65,6 +65,9 @@ def test_build_reports_creates_market_only_reports_and_does_not_score_holdout(tm
     assert report["method"].startswith("raw implied probabilities")
     assert report["coupon_simulation"]["status"] == "completed"
     assert report["coupon_simulation"]["simulation_count"] == 50
+    assert report["selected_candidate_bands_from_discovery"]
+    assert all(item["discovery_matches"] >= 50 and item["discovery_hit_rate"] >= 0.75
+               for item in report["selected_candidate_bands_from_discovery"])
     assert report["sealed_holdout"]["metrics_not_computed"] is True
     assert report["odds_timestamp_limitation"]
     segments = pd.read_csv(tmp_path / "market_1x2_segments.csv")
