@@ -66,11 +66,21 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
             legs = ranked.iloc[indices]
             combined_odds = float(legs["favorite_odds"].prod())
             for leg_number, (_, match) in enumerate(legs.iterrows(), start=1):
+                fixture = match.get("Fixture", match.get("Match", None))
+                if fixture is None or pd.isna(fixture) or not str(fixture).strip():
+                    home = match.get("HomeTeam", None)
+                    away = match.get("AwayTeam", None)
+                    if home is not None and away is not None:
+                        fixture = f"{home} - {away}"
+                    elif home is not None:
+                        fixture = home
+                    else:
+                        fixture = f"Pick {match['pick_rank']}"
                 coupon_rows.append({
                     "coupon": coupon_name,
                     "leg": leg_number,
                     "pick_rank": int(match["pick_rank"]),
-                    "fixture": str(match.get("Fixture", match.get("Match", match.get("HomeTeam", f"Pick {match['pick_rank']}")))),
+                    "fixture": str(fixture),
                     "market_favorite": match["market_favorite"],
                     "raw_implied_probability_pct": float(match["favorite_probability_pct"]),
                     "favorite_odds": float(match["favorite_odds"]),
