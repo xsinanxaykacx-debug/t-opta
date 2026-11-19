@@ -39,8 +39,8 @@ The website:
 4. Calculates the three raw implied values as `1 / odds`, then removes the 1X2 overround for displayed probabilities so MS1+MSX+MS2 total 100%.
 5. Looks up the matching historical validation record by normalized probability band and favorite type, showing actual wins, losses, sample size and hit rate separately from the probability.
 6. Applies the existing discovery-selected band + favorite-type gates and displays every fetched match, including those outside the selection criteria.
-6. If fewer than ten qualifying matches exist, it displays and exports all qualifying picks and explicitly reports the count (for example, "10 uygun maç yok; 6 uygun seçim bulundu"). It does not invent filler matches.
-7. When ten qualifying fixtures exist on the same calendar day, it creates the existing three 3-leg coupon groups.
+7. If fewer than ten qualifying matches exist, it displays and exports all qualifying picks and explicitly reports the count (for example, "10 uygun maç yok; 6 uygun seçim bulundu"). It does not invent filler matches.
+8. When ten qualifying fixtures exist on the same calendar day, it creates the existing three 3-leg coupon groups.
 
 The dashboard refresh button repeats the Maçkolik fetch. The captured source URL and odds timestamp are included in the generated CSV output. The bot writes the detailed files under `results_upcoming`, including `upcoming_market_picks.csv`, `all_upcoming_market_favorites.csv`, `upcoming_coupons.csv`, `upcoming_coupon_summary.csv`, and `upcoming_prediction_summary.json`.
 
