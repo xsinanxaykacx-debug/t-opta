@@ -31,12 +31,10 @@ def test_dashboard_history_loader_uses_validation_wins_and_losses(tmp_path, monk
     stats, meta = mackolik_web._load_historical_performance()
 
     record = stats[("81.00%-90.99%", "MS1")]
-    assert record["sample_size"] == 61
-    assert record["wins"] == 56
-    assert record["losses"] == 5
-    assert record["hit_rate_pct"] == 91.8
-    assert record["partition"] == "chronological_validation"
+    assert record["validation"]["sample_size"] == 61
     assert record["validation"]["wins"] == 56
+    assert record["validation"]["losses"] == 5
+    assert record["validation"]["hit_rate_pct"] == 91.8
     assert record["discovery"]["sample_size"] == 300
     assert meta["matches"] == 2112
     assert meta["odds_source"] == {"Avg": 14169}
