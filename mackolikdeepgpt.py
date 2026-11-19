@@ -1792,6 +1792,9 @@ def excel_ara_kaydet(genis_veri, oran_kolonlari, excel_dosya, hata_dosya, hatala
         if not isinstance(bilgi, dict):
             continue
         kayit = dict(bilgi)
+        if not metin_temizle(kayit.get("Lig", "")):
+            kayit["Lig"], kayit["Sezon"] = _lig_sezonu_ayir(
+                kayit.get("Lig/Sezon", ""))
         kayit["İY Skor"] = _skor_duzenle(kayit.get("İY Skor", ""))
         kayit["Skor"] = _skor_duzenle(kayit.get("Skor", ""))
         kayit["İY Sonucu"] = _skor_sonucu(kayit["İY Skor"])
