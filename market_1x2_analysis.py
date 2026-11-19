@@ -239,20 +239,29 @@ def _outcome_calibration_rows(data: pd.DataFrame, partition: str) -> list[dict]:
 
 def _select_candidate_bands(discovery: pd.DataFrame, minimum_matches: int = 50,
                             minimum_hit_rate: float = 0.75) -> list[dict]:
-    """Choose reliable-looking bands on discovery only; validation remains untouched."""
+    """Select band + 1X2 outcome pairs independently on discovery only."""
     selected = []
+    outcome_names = ("MS1", "MSX", "MS2")
     for label, lower, upper in zip(PROBABILITY_BAND_LABELS, PROBABILITY_BINS[:-1], PROBABILITY_BINS[1:]):
-        subset = discovery.loc[
+        in_band = (
             (discovery["favorite_probability"] >= lower)
             & (discovery["favorite_probability"] < upper)
-        ]
-        count = len(subset)
-        hit_rate = float(subset["favorite_correct"].mean()) if count else float("nan")
-        if count >= minimum_matches and hit_rate >= minimum_hit_rate:
-            selected.append({
-                "band": label, "lower": float(lower), "upper": float(upper),
-                "discovery_matches": int(count), "discovery_hit_rate": hit_rate,
-            })
+        )
+        for outcome_code, outcome_name in enumerate(outcome_names):
+            subset = discovery.loc[in_band & (discovery["market_favorite"] == outcome_code)]
+            count = len(subset)
+            wins = int(subset["favorite_correct"].sum()) if count else 0
+            hit_rate = wins / count if count else float("nan")
+            ci_lower, ci_upper = _wilson_interval(wins, count)
+            if count >= minimum_matches and hit_rate >= minimum_hit_rate:
+                selected.append({
+                    "band": label, "lower": float(lower), "upper": float(upper),
+                    "favorite_type": outcome_name,
+                    "discovery_matches": int(count), "discovery_wins": wins,
+                    "discovery_hit_rate": hit_rate,
+                    "discovery_hit_rate_ci95_lower": ci_lower,
+                    "discovery_hit_rate_ci95_upper": ci_upper,
+                })
     return selected
 
 
@@ -261,10 +270,15 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
                         stake_per_coupon: float = 100.0, seed: int = 20261119) -> dict:
     """Simulate real same-calendar-day groups using discovery-selected bands only."""
     selected_mask = np.zeros(len(validation), dtype=bool)
+    outcome_codes = {"MS1": 0, "MSX": 1, "MS2": 2}
     for band in selected_bands:
+        outcome_code = outcome_codes.get(band.get("favorite_type"))
+        if outcome_code is None:
+            continue
         selected_mask |= (
             (validation["favorite_probability"].to_numpy() >= band["lower"])
             & (validation["favorite_probability"].to_numpy() < band["upper"])
+            & (validation["market_favorite"].to_numpy() == outcome_code)
         )
     candidates = validation.loc[selected_mask].copy()
     candidates = candidates.sort_values("Date").reset_index(drop=True)
@@ -343,7 +357,7 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
         "mean_net_result": float(result["net_result"].mean()),
         "profitable_groups": int((result["net_result"] > 0).sum()),
         "break_even_or_better_groups": int((result["net_result"] >= 0).sum()),
-        "candidate_band_policy": "Discovery-only gate: include bands with at least 50 discovery matches and at least 75% favorite hit rate; evaluate those selected bands on validation.",
+        "candidate_band_policy": "Discovery-only gate applied independently to each probability-band and favorite-type pair: at least 50 matches and at least 75% favorite hit rate; only matching MS1/MSX/MS2 pairs are carried into validation and upcoming picks.",
         "simulation_note": "50 independently drawn same-calendar-day groups. Each group contains 10 distinct validation fixtures from one date in discovery-selected probability bands; groups may overlap between simulations. Three 3-leg coupons per group, 100 TL stake each; the 10th match is unused. Actual odds of the selected favorite are used. Historical out-of-sample simulation only, not a forecast.",
     }
 
