@@ -17,6 +17,10 @@
     .rank-orange{border:1px solid rgba(249,115,22,.58);background:linear-gradient(145deg,rgba(124,45,18,.25),rgba(15,23,42,.96) 58%)}
     .rank-blue{border:1px solid rgba(59,130,246,.58);background:linear-gradient(145deg,rgba(30,58,138,.25),rgba(15,23,42,.96) 58%)}
     .rank-pick{border:1px solid rgba(148,163,184,.2);background:rgba(9,14,25,.82);border-radius:12px;padding:13px}
+    .compact-match{display:flex;flex-wrap:wrap;align-items:center;gap:10px;border:1px solid #263449;background:#080e1a;border-radius:10px;padding:10px 12px}
+    .compact-market{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;width:100%}
+    .compact-market span{white-space:nowrap;text-align:center;border:1px solid rgba(71,85,105,.55);background:rgba(2,6,23,.7);border-radius:7px;padding:5px 6px;font-size:11px;color:#cbd5e1}
+    @media(min-width:640px){.compact-market{width:auto;min-width:330px}}
   </style>
 </head>
 <body class="min-h-screen flex flex-col p-5 md:p-7">
@@ -157,6 +161,22 @@ function bandLabel(probability){
   if(value>=50 && value<60) return 'MAVİ BANT';
   return '%50 ALTI';
 }
+function renderCompactMatch(m){
+  return `
+  <article class="compact-match">
+    <div class="flex-1 min-w-0">
+      <div class="text-[10px] muted mb-1">${esc(m.time)} · ${esc(m.league)}</div>
+      <div class="text-sm font-semibold leading-snug">${esc(m.home)} <span class="muted font-normal">-</span> ${esc(m.away)}</div>
+    </div>
+    <div class="compact-market">
+      ${[['1','MS1'],['X','MSX'],['2','MS2']].map(([key,label])=>`<span>${label} ${Number(m.odds[key]).toFixed(2)} · ${pct(m.probabilities_pct[key])}</span>`).join('')}
+    </div>
+  </article>`;
+}
+function isBelowBand(m){
+  const values=[Number(m.probabilities_pct['1']),Number(m.probabilities_pct.X),Number(m.probabilities_pct['2'])];
+  return Math.max(...values)<50;
+}
 function renderMatch(m){
   const cls = 'match';
   return `
@@ -202,11 +222,15 @@ async function loadFixtures(){
     ];
     $('downloadLinks').classList.remove('hidden');
     $('downloadLinks').innerHTML = files.map(([file,label])=>`<a class="text-xs text-emerald-300 underline hover:text-white" href="/outputs/${file}">${label}</a>`).join('');
-    $('leagueList').innerHTML = data.leagues.map(group=>`
-      <section>
-        <div class="flex items-center justify-between gap-2 mb-3"><h3 class="text-sm font-bold text-slate-200">${esc(group.league_name)}</h3><span class="text-xs muted">${group.matches.length} maç</span></div>
-        <div class="grid md:grid-cols-2 gap-3">${group.matches.map(renderMatch).join('')}</div>
-      </section>`).join('');
+    const belowBand = data.matches.filter(isBelowBand);
+    $('leagueList').innerHTML = belowBand.length ? `
+      <section class="mt-7">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div><h3 class="text-sm font-bold tracking-wide text-slate-200">DİĞER MAÇLAR · %50 ALTI</h3><p class="text-[11px] muted mt-1">Üç olasılık bandına girmeyen karşılaşmalar</p></div>
+          <span class="pill text-slate-300">${belowBand.length} MAÇ</span>
+        </div>
+        <div class="space-y-2">${belowBand.map(renderCompactMatch).join('')}</div>
+      </section>` : '';
   }catch(err){
     $('matchCount').textContent = 'Veri hatası';
     $('status').textContent = err.message + '. Sahte/yedek maç gösterilmiyor; Maçkolik verisi alınamadığında hata açıkça bildiriliyor.';
