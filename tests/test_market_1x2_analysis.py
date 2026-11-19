@@ -32,11 +32,18 @@ def test_market_probabilities_keep_raw_implied_probability_and_use_complete_sour
     })
     probabilities, info = market.market_probabilities(frame)
     assert info["source_counts"] == {"Avg": 1, "BbAv": 0, "B365": 1}
-    assert probabilities.loc[0, "p_home"] == pytest.approx(1 / 2)
-    assert probabilities.loc[0, "p_draw"] == pytest.approx(1 / 3)
-    assert probabilities.loc[0, "p_away"] == pytest.approx(1 / 4)
-    assert probabilities.loc[1, "p_home"] == pytest.approx(1 / 1.8)
-    assert probabilities.loc[1, "p_home"] + probabilities.loc[1, "p_draw"] + probabilities.loc[1, "p_away"] > 1.0
+    raw_first = np.array([1 / 2, 1 / 3, 1 / 4], dtype=float)
+    expected_first = raw_first / raw_first.sum()
+    assert probabilities.loc[0, "p_home"] == pytest.approx(expected_first[0])
+    assert probabilities.loc[0, "p_draw"] == pytest.approx(expected_first[1])
+    assert probabilities.loc[0, "p_away"] == pytest.approx(expected_first[2])
+    assert probabilities.loc[0, ["p_home", "p_draw", "p_away"]].sum() == pytest.approx(1.0)
+    assert probabilities.loc[0, "raw_p_home"] == pytest.approx(1 / 2)
+    raw_second = np.array([1 / 1.8, 1 / 3.2, 1 / 4.5], dtype=float)
+    assert probabilities.loc[1, "p_home"] == pytest.approx(raw_second[0] / raw_second.sum())
+    assert probabilities.loc[1, ["p_home", "p_draw", "p_away"]].sum() == pytest.approx(1.0)
+    assert probabilities.loc[1, "raw_p_home"] == pytest.approx(1 / 1.8)
+    assert probabilities.loc[1, "market_margin"] == pytest.approx(raw_second.sum() - 1)
     assert probabilities.loc[1, "odds_source"] == "B365"
 
 
@@ -62,7 +69,7 @@ def test_build_reports_creates_market_only_reports_and_does_not_score_holdout(tm
     report = market.build_reports(_frame(), tmp_path)
     assert report["discovery"]["rows"] > report["validation"]["rows"]
     assert report["selected_odds_source"]["source_counts"]["Avg"] == 120
-    assert report["method"].startswith("raw implied probabilities")
+    assert report["method"].startswith("de-vigged market probabilities")
     assert report["coupon_simulation"]["status"] in {"completed", "limited_unique_groups"}
     assert report["coupon_simulation"]["simulation_count"] <= 50
     assert report["coupon_simulation"]["simulation_count"] == report["coupon_simulation"]["unique_fixture_groups"]
@@ -103,7 +110,7 @@ def test_build_reports_creates_market_only_reports_and_does_not_score_holdout(tm
     favorite_types = pd.read_csv(tmp_path / "market_1x2_favorite_types.csv")
     assert set(favorite_types["favorite_type"]) == {"MS1", "MSX", "MS2"}
     assert set(favorite_types["favorite_probability_band"]) == {
-        "60.00%-70.99%", "71.00%-80.99%", "81.00%-90.99%", "91.00%-100.00%"
+        "0.00%-49.99%", "50.00%-59.99%", "60.00%-70.99%", "71.00%-80.99%", "81.00%-90.99%", "91.00%-100.00%"
     }
     simulations = pd.read_csv(tmp_path / "market_1x2_coupon_simulations.csv")
     assert len(simulations) == report["coupon_simulation"]["simulation_count"]

@@ -26,8 +26,8 @@ SOURCE_GROUPS = (
     ("BbAv", ("odds_BbAvH", "BbAvH"), ("odds_BbAvD", "BbAvD"), ("odds_BbAvA", "BbAvA")),
     ("B365", ("odds_B365H", "B365H"), ("odds_B365D", "B365D"), ("odds_B365A", "B365A")),
 )
-PROBABILITY_BINS = (0.60, 0.71, 0.81, 0.91, 1.0000001)
-PROBABILITY_BAND_LABELS = ('60.00%-70.99%', '71.00%-80.99%', '81.00%-90.99%', '91.00%-100.00%')
+PROBABILITY_BINS = (0.0, 0.50, 0.60, 0.71, 0.81, 0.91, 1.0000001)
+PROBABILITY_BAND_LABELS = ('0.00%-49.99%', '50.00%-59.99%', '60.00%-70.99%', '71.00%-80.99%', '81.00%-90.99%', '91.00%-100.00%')
 
 
 def _find_column(frame: pd.DataFrame, aliases: tuple[str, ...]) -> str | None:
@@ -48,6 +48,7 @@ def market_probabilities(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """Select one complete H/D/A triplet per row; never mix bookmakers."""
     n = len(frame)
     probs = np.full((n, 3), np.nan, dtype=float)
+    raw_probs = np.full((n, 3), np.nan, dtype=float)
     odds_selected = np.full((n, 3), np.nan, dtype=float)
     margin = np.full(n, np.nan, dtype=float)
     source_selected = np.full(n, "", dtype=object)
@@ -67,8 +68,9 @@ def market_probabilities(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
             continue
         inverse = np.column_stack([1.0 / values for values in raw])
         inverse_sum = inverse.sum(axis=1)
-        # Raw implied probability = 1 / decimal odds; deliberately no de-vigging.
-        probs[use] = inverse[use]
+        # Keep raw implied values for diagnostics; use de-vigged values for all probability bands.
+        raw_probs[use] = inverse[use]
+        probs[use] = inverse[use] / inverse_sum[use, None]
         odds_selected[use] = np.column_stack(raw)[use]
         margin[use] = inverse_sum[use] - 1.0
         source_selected[use] = source
@@ -87,6 +89,9 @@ def market_probabilities(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         )
 
     result = pd.DataFrame(probs, columns=["p_home", "p_draw", "p_away"], index=frame.index)
+    result["raw_p_home"] = raw_probs[:, 0]
+    result["raw_p_draw"] = raw_probs[:, 1]
+    result["raw_p_away"] = raw_probs[:, 2]
     result["market_margin"] = margin
     result["odds_home"] = odds_selected[:, 0]
     result["odds_draw"] = odds_selected[:, 1]
@@ -246,6 +251,8 @@ def _select_candidate_bands(discovery: pd.DataFrame, minimum_matches: int = 50,
     selected = []
     outcome_names = ("MS1", "MSX", "MS2")
     for label, lower, upper in zip(PROBABILITY_BAND_LABELS, PROBABILITY_BINS[:-1], PROBABILITY_BINS[1:]):
+        if lower < 0.60:
+            continue
         in_band = (
             (discovery["favorite_probability"] >= lower)
             & (discovery["favorite_probability"] < upper)
@@ -481,7 +488,7 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
     selected_candidate_bands = _select_candidate_bands(discovery)
     coupon_simulation = _coupon_simulations(validation, output_dir, selected_candidate_bands)
     overall = {
-        "method": "raw implied probabilities: 1 / decimal odds per outcome; no normalization and no margin removal",
+        "method": "de-vigged market probabilities: each raw 1 / decimal odds value divided by the complete 1X2 inverse-odds sum; empirical hit rates measured on chronological validation outcomes",
         "selected_odds_source": source_info,
         "odds_timestamp_limitation": "The archive does not provide odds capture timestamps; pre-kickoff availability is not independently verified.",
         "result_label": "FTHG/FTAG used only to derive H/D/A outcome label; never used as a predictor.",
@@ -492,7 +499,7 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
         "favorite_hit_rate_validation": float(validation["favorite_correct"].mean()),
         "favorite_class_counts_validation": {name: int((validation["market_favorite"] == code).sum()) for code, name in enumerate(("home", "draw", "away"))},
         "actual_class_counts_validation": {name: int((validation["actual_code"] == code).sum()) for code, name in enumerate(("home", "draw", "away"))},
-        "raw_probability_definition": "Each outcome probability equals 1 / its decimal odds. Values are intentionally not normalized and can sum above 100% because bookmaker margin is retained.",
+        "probability_definition": "Each outcome probability is its 1 / decimal odds value divided by the sum of all three 1X2 inverse odds; probabilities sum to 100%. Raw implied values and bookmaker margin are retained separately for diagnostics.",
         "favorite_probability_bands": list(PROBABILITY_BAND_LABELS),
         "selected_candidate_bands_from_discovery": selected_candidate_bands,
         "coupon_simulation": coupon_simulation,
