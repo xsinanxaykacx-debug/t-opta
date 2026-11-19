@@ -46,6 +46,12 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
     favorite_probability[valid_mask] = np.max(probability_matrix[valid_mask], axis=1)
     data["favorite_probability"] = favorite_probability
     data["favorite_probability_pct"] = data["favorite_probability"] * 100.0
+    raw_probability_matrix = data[["raw_p_home", "raw_p_draw", "raw_p_away"]].to_numpy(float)
+    favorite_raw_probability = np.full(len(data), np.nan, dtype=float)
+    favorite_raw_probability[valid_mask] = raw_probability_matrix[
+        np.arange(len(data))[valid_mask], favorite_codes[valid_mask]
+    ]
+    data["favorite_raw_probability_pct"] = favorite_raw_probability * 100.0
     data["probability_band"] = data["favorite_probability"].map(_band_for_probability)
     selected_pairs = {
         (item["band"], item["favorite_type"])
@@ -136,7 +142,8 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
                     "pick_rank": int(match["pick_rank"]),
                     "fixture": str(fixture),
                     "market_favorite": match["market_favorite"],
-                    "raw_implied_probability_pct": float(match["favorite_probability_pct"]),
+                    "raw_implied_probability_pct": float(match["favorite_raw_probability_pct"]),
+                    "normalized_probability_pct": float(match["favorite_probability_pct"]),
                     "favorite_odds": float(match["favorite_odds"]),
                 })
             coupon_summary.append({
@@ -151,14 +158,15 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
         unused_pick = {
             "pick_rank": int(unused["pick_rank"]),
             "market_favorite": unused["market_favorite"],
-            "raw_implied_probability_pct": float(unused["favorite_probability_pct"]),
+            "raw_implied_probability_pct": float(unused["favorite_raw_probability_pct"]),
+            "normalized_probability_pct": float(unused["favorite_probability_pct"]),
             "favorite_odds": float(unused["favorite_odds"]),
         }
     else:
         unused_pick = None
     pd.DataFrame(coupon_rows, columns=[
         "coupon", "leg", "pick_rank", "fixture", "market_favorite",
-        "raw_implied_probability_pct", "favorite_odds"
+        "raw_implied_probability_pct", "normalized_probability_pct", "favorite_odds"
     ]).to_csv(output_dir / "upcoming_coupons.csv", index=False)
     pd.DataFrame(coupon_summary, columns=[
         "coupon", "legs", "combined_decimal_odds", "stake_per_coupon",
