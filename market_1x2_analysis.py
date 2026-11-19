@@ -237,6 +237,71 @@ def _outcome_calibration_rows(data: pd.DataFrame, partition: str) -> list[dict]:
             })
     return rows
 
+def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, simulations: int = 50,
+                        group_size: int = 10, legs_per_coupon: int = 3,
+                        stake_per_coupon: float = 100.0, seed: int = 20261119) -> dict:
+    """Run 50 reproducible 10-match group simulations on validation favorites >=60%."""
+    candidates = validation.loc[validation["favorite_probability"] >= 0.60].copy()
+    candidates = candidates.sort_values("Date").reset_index(drop=True)
+    columns = ["simulation", "candidate_pool", "correct_of_10", "group_hit_rate",
+               "coupon1_won", "coupon2_won", "coupon3_won", "winning_coupons",
+               "total_return", "total_stake", "net_result", "any_coupon_won"]
+    if len(candidates) < group_size:
+        pd.DataFrame(columns=columns).to_csv(output_dir / "market_1x2_coupon_simulations.csv", index=False)
+        return {"status": "insufficient_validation_matches", "candidate_matches": int(len(candidates)),
+                "minimum_required": group_size, "simulations_requested": simulations}
+    rng = np.random.default_rng(seed)
+    odds_columns = ("odds_home", "odds_draw", "odds_away")
+    rows = []
+    for simulation in range(1, simulations + 1):
+        indices = rng.choice(len(candidates), size=group_size, replace=False)
+        group = candidates.iloc[indices].reset_index(drop=True)
+        coupons = []
+        for coupon_index in range(3):
+            coupon = group.iloc[coupon_index * legs_per_coupon:(coupon_index + 1) * legs_per_coupon]
+            leg_odds, leg_hits = [], []
+            for _, match in coupon.iterrows():
+                favorite = int(match["market_favorite"])
+                leg_odds.append(float(match[odds_columns[favorite]]))
+                leg_hits.append(bool(match["favorite_correct"]))
+            won = all(leg_hits)
+            coupons.append((won, float(np.prod(leg_odds) * stake_per_coupon) if won else 0.0,
+                            float(np.prod(leg_odds))))
+        total_return = sum(item[1] for item in coupons)
+        total_stake = 3.0 * stake_per_coupon
+        correct = int(group["favorite_correct"].sum())
+        rows.append({
+            "simulation": simulation, "candidate_pool": len(candidates),
+            "correct_of_10": correct, "group_hit_rate": correct / group_size,
+            "coupon1_won": coupons[0][0], "coupon2_won": coupons[1][0],
+            "coupon3_won": coupons[2][0],
+            "coupon1_odds": coupons[0][2], "coupon2_odds": coupons[1][2],
+            "coupon3_odds": coupons[2][2],
+            "winning_coupons": sum(item[0] for item in coupons),
+            "total_return": total_return, "total_stake": total_stake,
+            "net_result": total_return - total_stake,
+            "any_coupon_won": any(item[0] for item in coupons),
+        })
+    result = pd.DataFrame(rows)
+    result.to_csv(output_dir / "market_1x2_coupon_simulations.csv", index=False)
+    return {
+        "status": "completed", "simulation_count": simulations,
+        "candidate_matches": int(len(candidates)), "group_size": group_size,
+        "coupons_per_group": 3, "legs_per_coupon": legs_per_coupon,
+        "unused_match_per_group": group_size - 3 * legs_per_coupon,
+        "stake_per_coupon": stake_per_coupon, "stake_per_group": total_stake,
+        "groups_with_7_or_more_correct": int((result["correct_of_10"] >= 7).sum()),
+        "groups_with_8_or_more_correct": int((result["correct_of_10"] >= 8).sum()),
+        "groups_with_any_coupon_won": int(result["any_coupon_won"].sum()),
+        "coupon_wins_total": int(result["winning_coupons"].sum()),
+        "mean_correct_of_10": float(result["correct_of_10"].mean()),
+        "mean_net_result": float(result["net_result"].mean()),
+        "profitable_groups": int((result["net_result"] > 0).sum()),
+        "break_even_or_better_groups": int((result["net_result"] >= 0).sum()),
+        "simulation_note": "50 reproducible groups sampled without replacement within each group from validation favorites with raw implied probability >=60%; groups may overlap between simulations. Three 3-leg coupons per group, 100 TL stake each; the 10th match is unused. Actual odds of the selected favorite are used. Historical simulation only, not a forecast.",
+    }
+
+
 def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
     required = {"Date", "FTHG", "FTAG"}
     missing = sorted(required - set(frame.columns))
@@ -321,6 +386,7 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
         output_dir / "market_1x2_calibration_summary.csv", index=False
     )
 
+    coupon_simulation = _coupon_simulations(validation, output_dir)
     overall = {
         "method": "raw implied probabilities: 1 / decimal odds per outcome; no normalization and no margin removal",
         "selected_odds_source": source_info,
@@ -336,6 +402,7 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
         "actual_class_counts_validation": {name: int((validation["actual_code"] == code).sum()) for code, name in enumerate(("home", "draw", "away"))},
         "raw_probability_definition": "Each outcome probability equals 1 / its decimal odds. Values are intentionally not normalized and can sum above 100% because bookmaker margin is retained.",
         "favorite_probability_bands": list(PROBABILITY_BAND_LABELS),
+        "coupon_simulation": coupon_simulation,
     }
     (output_dir / "market_1x2_summary.json").write_text(
         json.dumps(overall, ensure_ascii=False, indent=2), encoding="utf-8"
