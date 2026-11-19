@@ -71,6 +71,7 @@ def test_build_reports_creates_market_only_reports_and_does_not_score_holdout(tm
     assert report["coupon_simulation"]["eligible_match_dates"] >= 1
     assert report["selected_candidate_bands_from_discovery"]
     assert all(item["discovery_matches"] >= 50 and item["discovery_hit_rate"] >= 0.75
+               and item["discovery_hit_rate_ci95_lower"] >= 0.75
                for item in report["selected_candidate_bands_from_discovery"])
     assert {item["favorite_type"] for item in report["selected_candidate_bands_from_discovery"]} == {"MS1"}
     assert report["sealed_holdout"]["metrics_not_computed"] is True
@@ -174,3 +175,15 @@ def test_coupon_simulation_does_not_repeat_the_only_possible_group(tmp_path):
     assert report["duplicate_fixture_group_draws"] == 0
     output = pd.read_csv(tmp_path / "market_1x2_coupon_simulations.csv")
     assert len(output) == 1
+
+
+def test_candidate_gate_rejects_high_hit_rate_with_weak_lower_confidence_bound():
+    discovery = pd.DataFrame({
+        "favorite_probability": [0.75] * 50,
+        "market_favorite": [0] * 50,
+        "favorite_correct": [True] * 40 + [False] * 10,
+    })
+    selected = market._select_candidate_bands(discovery, minimum_matches=50,
+                                               minimum_hit_rate=0.75,
+                                               minimum_ci_lower=0.75)
+    assert selected == []
