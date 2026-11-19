@@ -114,6 +114,7 @@ def _analyze_rows(rows: list[dict]) -> dict:
         }
         # Keep the independent validation record at top level for compact API consumers.
         historical_performance.update(historical_performance["validation"])
+        historical_performance["partition"] = "chronological_validation"
         is_eligible = (band, favorite_type) in selected_pairs
         matches.append({
             "match_id": str(row.get("MatchId", "")),
