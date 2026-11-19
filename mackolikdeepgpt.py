@@ -48,6 +48,22 @@ ULKE_GRUPLARI = {
     "BE": {"ad": "Belçika", "ligler": {(9, 5), (415, 5)}},
     "NL": {"ad": "Hollanda", "ligler": {(17, 11), (120, 11)}},
     "SC": {"ad": "İskoçya", "ligler": {(26, 18), (106, 18)}},
+
+    # Yeni ülkeler: ülke adına göre tüm futbol ligleri dahil edilir.
+    "DK": {"ad": "Danimarka", "ligler": set(), "ulke_adlari": {"danimarka", "denmark"}},
+    "NO": {"ad": "Norveç", "ligler": set(), "ulke_adlari": {"norvec", "norway"}},
+    "SE": {"ad": "İsveç", "ligler": set(), "ulke_adlari": {"isvec", "sweden"}},
+    "CH": {"ad": "İsviçre", "ligler": set(), "ulke_adlari": {"isvicre", "switzerland"}},
+    "PL": {"ad": "Polonya", "ligler": set(), "ulke_adlari": {"polonya", "poland"}},
+    "HR": {"ad": "Hırvatistan", "ligler": set(), "ulke_adlari": {"hirvatistan", "croatia"}},
+    "AL": {"ad": "Arnavutluk", "ligler": set(), "ulke_adlari": {"arnavutluk", "albania"}},
+    "GR": {"ad": "Yunanistan", "ligler": set(), "ulke_adlari": {"yunanistan", "greece"}},
+    "BG": {"ad": "Bulgaristan", "ligler": set(), "ulke_adlari": {"bulgaristan", "bulgaria"}},
+    "RO": {"ad": "Romanya", "ligler": set(), "ulke_adlari": {"romanya", "romania"}},
+    "CZ": {"ad": "Çekya", "ligler": set(), "ulke_adlari": {"cekya", "cek cumhuriyeti", "czechia", "czech republic"}},
+    "RS": {"ad": "Sırbistan", "ligler": set(), "ulke_adlari": {"sirbistan", "serbia"}},
+    "SK": {"ad": "Slovakya", "ligler": set(), "ulke_adlari": {"slovakya", "slovakia"}},
+    "AT": {"ad": "Avusturya", "ligler": set(), "ulke_adlari": {"avusturya", "austria"}},
 }
 
 AKTIF_GRUPLAR = []
@@ -58,11 +74,25 @@ AKTIF_ETIKET = "ALL"
 def _lig_uygun_mu(yarisma):
     if not isinstance(yarisma, list) or len(yarisma) < 3:
         return False
+
+    # Eski gruplarda doğrulanmış ülke/lig ID eşleşmesi aynen korunur.
     try:
-        ulke_id = int(yarisma[0]); lig_id = int(yarisma[2])
+        ulke_id = int(yarisma[0])
+        lig_id = int(yarisma[2])
+        if (lig_id, ulke_id) in AKTIF_LIGLER:
+            return True
     except (TypeError, ValueError):
+        pass
+
+    # Yeni gruplar ülke adına göre eşleşir; bilinmeyen lig ID'leri sorun olmaz.
+    ulke_adi = arsiv_slug_yap(yarisma[1]).casefold() if len(yarisma) > 1 else ""
+    if not ulke_adi:
         return False
-    return (lig_id, ulke_id) in AKTIF_LIGLER
+
+    return any(
+        ulke_adi in ULKE_GRUPLARI[kod].get("ulke_adlari", set())
+        for kod in AKTIF_GRUPLAR
+    )
 
 
 def _lig_filtresi_imzasi():
@@ -71,6 +101,8 @@ def _lig_filtresi_imzasi():
         parcalar.append(kod)
         for lig_id, ulke_id in sorted(ULKE_GRUPLARI[kod]["ligler"]):
             parcalar.append(f"{lig_id}-{ulke_id}")
+        for ulke_adi in sorted(ULKE_GRUPLARI[kod].get("ulke_adlari", set())):
+            parcalar.append(f"ulke:{ulke_adi}")
     return "|".join(parcalar)
 
 
@@ -1359,6 +1391,55 @@ def arsiv_mac_bilgisi_cikar(soup, row):
     return sonuc
 
 
+def _oran_satiri_uygun_mu(bahis_turu, secim):
+    market = metin_temizle(bahis_turu).casefold()
+    secim_metin = metin_temizle(secim).casefold()
+
+    cevir = str.maketrans({
+        "ı": "i", "İ": "i", "ğ": "g", "Ğ": "g",
+        "ü": "u", "Ü": "u", "ş": "s", "Ş": "s",
+        "ö": "o", "Ö": "o", "ç": "c", "Ç": "c",
+    })
+    market_norm = re.sub(r"[^a-z0-9]+", " ", market.translate(cevir)).strip()
+    secim_norm = re.sub(r"[^a-z0-9]+", " ", secim_metin.translate(cevir)).strip()
+    market_tokens = set(market_norm.split())
+    secim_tokens = set(secim_norm.split())
+
+    # İlk yarı / devre bahislerini MS 1X2 olarak kabul etme.
+    if any(x in market_tokens for x in {"iy", "ilk", "yari", "devre", "half"}):
+        return False
+
+    # MS 1X2
+    ms_market = (
+        "mac sonucu" in market_norm
+        or "match result" in market_norm
+        or market_norm in {"1x2", "ms", "sonuc"}
+    )
+    if ms_market:
+        return secim_norm in {"1", "x", "2"}
+
+    # Yalnızca 2.5 gol Alt/Üst; diğer gol çizgileri alınmaz.
+    iki_bes = bool(re.search(r"(?<!\d)2(?:[.,\s-])5(?!\d)", market_norm))
+    iki_bes = iki_bes or bool(re.search(r"(?<!\d)2(?:[.,\s-])5(?!\d)", secim_norm))
+    alt_ust = (
+        any(x in market_tokens for x in {"gol", "toplam", "alt", "ust", "over", "under"})
+        or any(x in secim_tokens for x in {"alt", "ust", "over", "under"})
+    )
+    if iki_bes and alt_ust:
+        return bool(secim_tokens.intersection({"alt", "ust", "over", "under"}))
+
+    # Karşılıklı gol: Var/Yok (KG Var / KG Yok).
+    kg_market = (
+        "karsilikli gol" in market_norm
+        or "both teams to score" in market_norm
+        or "kg" in market_tokens
+    )
+    if kg_market:
+        return bool(secim_tokens.intersection({"var", "yok", "yes", "no", "evet", "hayir"}))
+
+    return False
+
+
 def arsiv_sayfa_oranlari(soup):
     kapsayici = soup.select_one("#compare-left-coll")
     if kapsayici is None:
@@ -1395,6 +1476,8 @@ def arsiv_sayfa_oranlari(soup):
             _eski_tablo_ayristir(tablo, rows)
     benzersiz, gorulen = [], set()
     for item in rows:
+        if not _oran_satiri_uygun_mu(item["Bahis Türü"], item["Seçim"]):
+            continue
         key = (item["Bahis Türü"], item["Seçim"], item["Oran"])
         if key not in gorulen:
             gorulen.add(key)
