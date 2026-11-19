@@ -26,23 +26,25 @@ def _load_historical_performance():
         )
     summary = json.loads(SUMMARY_PATH.read_text(encoding="utf-8"))
     frame = pd.read_csv(HISTORICAL_TYPES_PATH)
-    validation = frame.loc[frame["partition"] == "validation"]
     stats = {}
-    for row in validation.to_dict(orient="records"):
+    for row in frame.to_dict(orient="records"):
         count = int(row["matches"])
         wins = int(row["wins"])
         rate = row.get("hit_rate")
         lower = row.get("hit_rate_ci95_lower")
         upper = row.get("hit_rate_ci95_upper")
-        stats[(str(row["favorite_probability_band"]), str(row["favorite_type"]))] = {
+        partition = str(row["partition"])
+        record = {
             "sample_size": count,
             "wins": wins,
             "losses": count - wins,
             "hit_rate_pct": round(float(rate) * 100, 2) if pd.notna(rate) else None,
             "ci95_lower_pct": round(float(lower) * 100, 2) if pd.notna(lower) else None,
             "ci95_upper_pct": round(float(upper) * 100, 2) if pd.notna(upper) else None,
-            "partition": "chronological_validation",
         }
+        stats.setdefault(
+            (str(row["favorite_probability_band"]), str(row["favorite_type"])), {}
+        )[partition] = record
     validation_meta = summary.get("validation", {})
     return stats, {
         "matches": int(validation_meta.get("rows", 0)),
@@ -100,11 +102,18 @@ def _analyze_rows(rows: list[dict]) -> dict:
         favorite_type = {"1": "MS1", "X": "MSX", "2": "MS2"}[favorite_key]
         favorite_probability = probabilities[favorite_key]
         band = _band_for_probability(favorite_probability)
-        historical_performance = historical_stats.get((band, favorite_type), {
-            "sample_size": 0, "wins": 0, "losses": 0,
-            "hit_rate_pct": None, "ci95_lower_pct": None, "ci95_upper_pct": None,
-            "partition": "chronological_validation",
-        })
+        historical_performance = historical_stats.get((band, favorite_type), {})
+        historical_performance = {
+            "validation": historical_performance.get("validation", {
+                "sample_size": 0, "wins": 0, "losses": 0,
+                "hit_rate_pct": None, "ci95_lower_pct": None, "ci95_upper_pct": None,
+            }),
+            "discovery": historical_performance.get("discovery", {
+                "sample_size": 0, "wins": 0, "losses": 0, "hit_rate_pct": None,
+            }),
+        }
+        # Keep the independent validation record at top level for compact API consumers.
+        historical_performance.update(historical_performance["validation"])
         is_eligible = (band, favorite_type) in selected_pairs
         matches.append({
             "match_id": str(row.get("MatchId", "")),
