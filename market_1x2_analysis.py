@@ -24,7 +24,8 @@ SOURCE_GROUPS = (
     ("BbAv", ("odds_BbAvH", "BbAvH"), ("odds_BbAvD", "BbAvD"), ("odds_BbAvA", "BbAvA")),
     ("B365", ("odds_B365H", "B365H"), ("odds_B365D", "B365D"), ("odds_B365A", "B365A")),
 )
-PROBABILITY_BINS = (0.50, 0.60, 0.70, 0.80, 1.0000001)
+PROBABILITY_BINS = (0.60, 0.71, 0.81, 0.91, 1.0000001)
+PROBABILITY_BAND_LABELS = ('60.00%-70.99%', '71.00%-80.99%', '81.00%-90.99%', '91.00%-100.00%')
 
 
 def _find_column(frame: pd.DataFrame, aliases: tuple[str, ...]) -> str | None:
@@ -64,7 +65,8 @@ def market_probabilities(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
             continue
         inverse = np.column_stack([1.0 / values for values in raw])
         inverse_sum = inverse.sum(axis=1)
-        probs[use] = inverse[use] / inverse_sum[use, None]
+        # Raw implied probability = 1 / decimal odds; deliberately no de-vigging.
+        probs[use] = inverse[use]
         odds_selected[use] = np.column_stack(raw)[use]
         margin[use] = inverse_sum[use] - 1.0
         source_selected[use] = source
@@ -270,36 +272,43 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
     pd.DataFrame(scope_rows).to_csv(output_dir / "market_1x2_segments.csv", index=False)
 
     bin_rows = []
+    favorite_type_rows = []
     for partition_name, part in (("discovery", discovery), ("validation", validation)):
-        for lower, upper in zip(PROBABILITY_BINS[:-1], PROBABILITY_BINS[1:]):
-            chosen = part.loc[
-                (part["favorite_probability"] >= lower)
-                & (part["favorite_probability"] < upper)
-            ]
+        for band_index, (lower, upper) in enumerate(zip(PROBABILITY_BINS[:-1], PROBABILITY_BINS[1:])):
+            chosen = part.loc[(part["favorite_probability"] >= lower) & (part["favorite_probability"] < upper)]
             stats = _summary(chosen)
             favorite_count = int(len(chosen))
             favorite_wins = int(chosen["favorite_correct"].sum()) if favorite_count else 0
             favorite_rate = favorite_wins / favorite_count if favorite_count else np.nan
             favorite_ci_lower, favorite_ci_upper = _wilson_interval(favorite_wins, favorite_count)
-            calibration_gap = favorite_rate - stats["mean_confidence"] if favorite_count else np.nan
             stats.update({
                 "partition": partition_name,
-                "favorite_probability_band": f"{lower:.0%}-{min(upper, 1.0):.0%}",
+                "favorite_probability_band": PROBABILITY_BAND_LABELS[band_index],
                 "favorite_hit_rate": favorite_rate,
                 "favorite_hit_rate_ci95_lower": favorite_ci_lower,
                 "favorite_hit_rate_ci95_upper": favorite_ci_upper,
-                "favorite_calibration_gap": calibration_gap,
-                "favorite_calibration_gap_ci95_lower": (
-                    favorite_ci_lower - stats["mean_confidence"] if favorite_count else np.nan
-                ),
-                "favorite_calibration_gap_ci95_upper": (
-                    favorite_ci_upper - stats["mean_confidence"] if favorite_count else np.nan
-                ),
+                "favorite_calibration_gap": favorite_rate - stats["mean_confidence"] if favorite_count else np.nan,
+                "favorite_calibration_gap_ci95_lower": favorite_ci_lower - stats["mean_confidence"] if favorite_count else np.nan,
+                "favorite_calibration_gap_ci95_upper": favorite_ci_upper - stats["mean_confidence"] if favorite_count else np.nan,
                 "favorite_wins": favorite_wins,
                 "favorite_count": favorite_count,
             })
             bin_rows.append(stats)
+            for code, outcome_name in enumerate(("MS1", "MSX", "MS2")):
+                subset = chosen.loc[chosen["market_favorite"] == code]
+                n_type = len(subset)
+                wins_type = int(subset["favorite_correct"].sum()) if n_type else 0
+                ci_low, ci_high = _wilson_interval(wins_type, n_type)
+                favorite_type_rows.append({
+                    "partition": partition_name,
+                    "favorite_probability_band": PROBABILITY_BAND_LABELS[band_index],
+                    "favorite_type": outcome_name,
+                    "matches": int(n_type), "wins": wins_type,
+                    "hit_rate": wins_type / n_type if n_type else np.nan,
+                    "hit_rate_ci95_lower": ci_low, "hit_rate_ci95_upper": ci_high,
+                })
     pd.DataFrame(bin_rows).to_csv(output_dir / "market_1x2_probability_bands.csv", index=False)
+    pd.DataFrame(favorite_type_rows).to_csv(output_dir / "market_1x2_favorite_types.csv", index=False)
 
     calibration_rows = []
     for partition_name, part in (("discovery", discovery), ("validation", validation)):
@@ -313,9 +322,10 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
     )
 
     overall = {
-        "method": "de-vigged implied probabilities from one complete bookmaker H/D/A triplet",
+        "method": "raw implied probabilities: 1 / decimal odds per outcome; no normalization and no margin removal",
         "selected_odds_source": source_info,
         "odds_timestamp_limitation": "The archive does not provide odds capture timestamps; pre-kickoff availability is not independently verified.",
+        "result_label": "FTHG/FTAG used only to derive H/D/A outcome label; never used as a predictor.",
         "result_label": "FTHG/FTAG used only to derive H/D/A outcome label; never used as a predictor.",
         "discovery": {"rows": len(discovery), "start": str(discovery["Date"].min()), "end": str(discovery["Date"].max()), **_summary(discovery)},
         "validation": {"rows": len(validation), "start": str(validation["Date"].min()), "end": str(validation["Date"].max()), **_summary(validation)},
@@ -324,6 +334,8 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
         "favorite_hit_rate_validation": float(validation["favorite_correct"].mean()),
         "favorite_class_counts_validation": {name: int((validation["market_favorite"] == code).sum()) for code, name in enumerate(("home", "draw", "away"))},
         "actual_class_counts_validation": {name: int((validation["actual_code"] == code).sum()) for code, name in enumerate(("home", "draw", "away"))},
+        "raw_probability_definition": "Each outcome probability equals 1 / its decimal odds. Values are intentionally not normalized and can sum above 100% because bookmaker margin is retained.",
+        "favorite_probability_bands": list(PROBABILITY_BAND_LABELS),
     }
     (output_dir / "market_1x2_summary.json").write_text(
         json.dumps(overall, ensure_ascii=False, indent=2), encoding="utf-8"
