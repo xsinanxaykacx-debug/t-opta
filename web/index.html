@@ -12,6 +12,8 @@
     .pill{border:1px solid #334155;border-radius:999px;padding:4px 10px;font-size:11px}
     .match{border:1px solid #263449;background:#080e1a;border-radius:13px;padding:14px}
     .eligible{border-color:rgba(16,185,129,.55)}
+    .featured-panel{border:1px solid rgba(249,115,22,.65);background:linear-gradient(145deg,rgba(124,45,18,.24),rgba(15,23,42,.96) 58%);border-radius:16px;padding:16px;margin-bottom:22px;box-shadow:0 10px 30px rgba(194,65,12,.08)}
+    .featured-pick{border:1px solid rgba(251,146,60,.34);background:rgba(9,14,25,.82);border-radius:12px;padding:13px}
   </style>
 </head>
 <body class="min-h-screen flex flex-col p-5 md:p-7">
@@ -41,6 +43,17 @@
         </div>
       </div>
 
+      <section id="eligiblePanel" class="featured-panel hidden" aria-live="polite">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <div class="text-xs font-bold tracking-widest text-orange-300">GÜNÜN UYGUN SEÇİMLERİ</div>
+            <p class="text-xs text-orange-100/70 mt-1">Tarihsel seçim kriterlerini geçen maçlar</p>
+          </div>
+          <span id="eligibleBadge" class="rounded-full border border-orange-400/50 bg-orange-400/15 px-3 py-1 text-xs font-bold text-orange-200">0 SEÇİM</span>
+        </div>
+        <div id="eligibleList" class="grid md:grid-cols-2 gap-3"></div>
+      </section>
+
       <div id="status" class="rounded-xl bg-slate-950 border border-slate-800 p-4 text-sm text-slate-300 mb-5">
         Maçkolik'ten fikstür ve MS1/MSX/MS2 oranları çekiliyor...
       </div>
@@ -66,6 +79,30 @@
 const $ = id => document.getElementById(id);
 const pct = n => '%' + Number(n).toFixed(2);
 function esc(value){return String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function renderEligiblePick(m){
+  return `
+  <article class="featured-pick">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+      <span class="text-xs text-orange-200/75">${esc(m.time)} · ${esc(m.league)}</span>
+      <span class="rounded-full bg-orange-400/15 border border-orange-300/40 px-2.5 py-1 text-[10px] font-bold text-orange-200">${esc(m.favorite)}</span>
+    </div>
+    <div class="font-bold text-base leading-snug">${esc(m.home)} <span class="text-slate-500 font-normal">-</span> ${esc(m.away)}</div>
+    <div class="flex flex-wrap items-end justify-between gap-3 mt-3">
+      <div>
+        <div class="text-[10px] uppercase tracking-wider text-slate-400">Piyasa olasılığı</div>
+        <div class="text-2xl font-extrabold text-orange-300 mt-0.5">${pct(m.favorite_probability_pct)}</div>
+      </div>
+      <div class="text-right">
+        <div class="text-[10px] text-slate-400">MS oranı</div>
+        <div class="font-mono text-lg font-bold text-slate-100">${Number(m.odds[m.favorite === 'MS1' ? '1' : m.favorite === 'MSX' ? 'X' : '2']).toFixed(2)}</div>
+      </div>
+    </div>
+    <div class="flex items-center justify-between gap-2 mt-3 pt-2 border-t border-orange-200/10">
+      <span class="text-[10px] text-orange-100/65">${esc(m.probability_band)}</span>
+      ${m.match_url ? `<a class="text-xs text-orange-200 underline hover:text-white" target="_blank" rel="noreferrer" href="${esc(m.match_url)}">Maçkolik'te aç</a>` : ''}
+    </div>
+  </article>`;
+}
 function renderMatch(m){
   const cls = m.eligible ? 'match eligible' : 'match';
   const badge = m.eligible
@@ -92,6 +129,8 @@ async function loadFixtures(){
   $('refreshBtn').textContent = 'Çekiliyor...';
   $('status').textContent = "Maçkolik'ten bugünün maçları ve MS1/MSX/MS2 oranları alınıyor...";
   $('leagueList').innerHTML = '';
+  $('eligiblePanel').classList.add('hidden');
+  $('eligibleList').innerHTML = '';
   $('empty').classList.add('hidden');
   try{
     const response = await fetch('/api/fixtures/today',{cache:'no-store'});
@@ -104,6 +143,14 @@ async function loadFixtures(){
     $('status').textContent = data.message;
     $('updated').textContent = 'Son kontrol: ' + new Date().toLocaleString('tr-TR') + ' · Kaynak: Maçkolik';
     if(!data.matches.length){$('empty').classList.remove('hidden');return;}
+
+    const eligiblePicks = data.matches.filter(match => match.eligible);
+    if(eligiblePicks.length){
+      $('eligibleBadge').textContent = eligiblePicks.length + ' SEÇİM';
+      $('eligibleList').innerHTML = eligiblePicks.map(renderEligiblePick).join('');
+      $('eligiblePanel').classList.remove('hidden');
+    }
+
     const files = [
       ['upcoming_market_picks.csv','Seçim listesini indir'],
       ['all_upcoming_market_favorites.csv','Tüm maç analizini indir'],
