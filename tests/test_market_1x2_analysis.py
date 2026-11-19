@@ -65,6 +65,10 @@ def test_build_reports_creates_market_only_reports_and_does_not_score_holdout(tm
     assert report["method"].startswith("raw implied probabilities")
     assert report["coupon_simulation"]["status"] == "completed"
     assert report["coupon_simulation"]["simulation_count"] == 50
+    assert report["coupon_simulation"]["unique_fixture_groups"] <= 50
+    assert report["coupon_simulation"]["duplicate_fixture_group_draws"] == (
+        50 - report["coupon_simulation"]["unique_fixture_groups"]
+    )
     assert report["coupon_simulation"]["eligible_match_dates"] >= 1
     assert report["selected_candidate_bands_from_discovery"]
     assert all(item["discovery_matches"] >= 50 and item["discovery_hit_rate"] >= 0.75
