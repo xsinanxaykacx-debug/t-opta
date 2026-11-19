@@ -27,7 +27,7 @@ LOCAL_TZ = ZoneInfo("Europe/Istanbul")
 THREAD_LOCAL = threading.local()
 CSV_COLUMNS = [
     "Date", "HomeTeam", "AwayTeam", "AvgH", "AvgD", "AvgA",
-    "Source", "MatchId", "MatchURL", "OddsCapturedAt",
+    "League", "Source", "MatchId", "MatchURL", "OddsCapturedAt",
 ]
 
 
@@ -111,6 +111,7 @@ def fetch_fixtures(days: int = 7, now: datetime | None = None) -> list[dict]:
                 "away": str(away).strip(),
                 "kickoff": kickoff,
                 "competition_id": item.get("competitionId"),
+                "league_name": item.get("competitionName") or item.get("tournamentName") or ((item.get("competition") or {}).get("name") if isinstance(item.get("competition"), dict) else None) or str(item.get("competitionId") or "Diğer ligler"),
                 "iddaa_code": item.get("iddaaCode"),
             }
     return sorted(fixtures.values(), key=lambda row: row["kickoff"])
@@ -178,6 +179,7 @@ def fetch_match_odds(fixture: dict) -> dict | None:
             "AvgH": odds[0],
             "AvgD": odds[1],
             "AvgA": odds[2],
+            "League": fixture.get("league_name", "Diğer ligler"),
             "Source": "Mackolik",
             "MatchId": fixture["match_id"],
             "MatchURL": match_url,
