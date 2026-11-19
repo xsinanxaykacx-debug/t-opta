@@ -87,6 +87,9 @@ function renderEligiblePick(m){
       <span class="rounded-full bg-orange-400/15 border border-orange-300/40 px-2.5 py-1 text-[10px] font-bold text-orange-200">${esc(m.favorite)}</span>
     </div>
     <div class="font-bold text-base leading-snug">${esc(m.home)} <span class="text-slate-500 font-normal">-</span> ${esc(m.away)}</div>
+    <div class="grid grid-cols-3 gap-2 text-center mt-3">
+      ${[['1','MS1'],['X','MSX'],['2','MS2']].map(([key,label])=>`<div class="rounded-lg border border-orange-200/15 bg-slate-950/70 p-2"><div class="text-[10px] text-slate-400">${label}</div><div class="text-sm font-bold text-slate-100">${pct(m.probabilities_pct[key])}</div><div class="text-[10px] text-slate-500">Oran ${Number(m.odds[key]).toFixed(2)}</div></div>`).join('')}
+    </div>
     <div class="flex flex-wrap items-end justify-between gap-3 mt-3">
       <div>
         <div class="text-[10px] uppercase tracking-wider text-slate-400">Piyasa olasılığı</div>
