@@ -48,8 +48,15 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
     data["favorite_probability"] = favorite_probability
     data["favorite_probability_pct"] = data["favorite_probability"] * 100.0
     data["probability_band"] = data["favorite_probability"].map(_band_for_probability)
-    selected_labels = {item["band"] for item in selected_bands}
-    data["selected_for_coupon"] = data["probability_band"].isin(selected_labels)
+    selected_pairs = {
+        (item["band"], item["favorite_type"])
+        for item in selected_bands
+        if item.get("favorite_type") in {"MS1", "MSX", "MS2"}
+    }
+    data["selected_for_coupon"] = [
+        (band, favorite_type) in selected_pairs
+        for band, favorite_type in zip(data["probability_band"], data["market_favorite"])
+    ]
     odds_matrix = data[["odds_home", "odds_draw", "odds_away"]].to_numpy(float)
     favorite_odds = np.full(len(data), np.nan, dtype=float)
     favorite_odds[valid_mask] = odds_matrix[np.arange(len(data))[valid_mask], favorite_codes[valid_mask]]
