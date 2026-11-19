@@ -12,16 +12,16 @@ def _frame(n=120):
         "League": ["L1" if i % 2 else "L2" for i in range(n)],
         "FTHG": [2 if i % 3 == 0 else (0 if i % 3 == 1 else 1) for i in range(n)],
         "FTAG": [0 if i % 3 == 0 else (0 if i % 3 == 1 else 2) for i in range(n)],
-        "AvgH": [1.8] * n,
-        "AvgD": [3.6] * n,
-        "AvgA": [4.5] * n,
-        "B365H": [1.7] * n,
-        "B365D": [3.8] * n,
-        "B365A": [5.0] * n,
+        "AvgH": [1.3] * n,
+        "AvgD": [4.0] * n,
+        "AvgA": [5.0] * n,
+        "B365H": [1.25] * n,
+        "B365D": [4.2] * n,
+        "B365A": [5.2] * n,
     })
 
 
-def test_market_probabilities_remove_overround_and_use_complete_source():
+def test_market_probabilities_keep_raw_implied_probability_and_use_complete_source():
     frame = pd.DataFrame({
         "AvgH": [2.0, np.nan],
         "AvgD": [3.0, np.nan],
@@ -32,8 +32,11 @@ def test_market_probabilities_remove_overround_and_use_complete_source():
     })
     probabilities, info = market.market_probabilities(frame)
     assert info["source_counts"] == {"Avg": 1, "BbAv": 0, "B365": 1}
-    assert probabilities.loc[0, "p_home"] == pytest.approx((1 / 2) / (1 / 2 + 1 / 3 + 1 / 4))
-    assert probabilities.loc[1, "p_home"] == pytest.approx((1 / 1.8) / (1 / 1.8 + 1 / 3.2 + 1 / 4.5))
+    assert probabilities.loc[0, "p_home"] == pytest.approx(1 / 2)
+    assert probabilities.loc[0, "p_draw"] == pytest.approx(1 / 3)
+    assert probabilities.loc[0, "p_away"] == pytest.approx(1 / 4)
+    assert probabilities.loc[1, "p_home"] == pytest.approx(1 / 1.8)
+    assert probabilities.loc[1, "p_home"] + probabilities.loc[1, "p_draw"] + probabilities.loc[1, "p_away"] > 1.0
     assert probabilities.loc[1, "odds_source"] == "B365"
 
 
@@ -59,6 +62,9 @@ def test_build_reports_creates_market_only_reports_and_does_not_score_holdout(tm
     report = market.build_reports(_frame(), tmp_path)
     assert report["discovery"]["rows"] > report["validation"]["rows"]
     assert report["selected_odds_source"]["source_counts"]["Avg"] == 120
+    assert report["method"].startswith("raw implied probabilities")
+    assert report["coupon_simulation"]["status"] == "completed"
+    assert report["coupon_simulation"]["simulation_count"] == 50
     assert report["sealed_holdout"]["metrics_not_computed"] is True
     assert report["odds_timestamp_limitation"]
     segments = pd.read_csv(tmp_path / "market_1x2_segments.csv")
@@ -85,6 +91,18 @@ def test_build_reports_creates_market_only_reports_and_does_not_score_holdout(tm
         bands.loc[nonempty, "favorite_hit_rate"] - bands.loc[nonempty, "mean_confidence"],
     )
     assert (tmp_path / "market_1x2_summary.json").exists()
+    favorite_types = pd.read_csv(tmp_path / "market_1x2_favorite_types.csv")
+    assert set(favorite_types["favorite_type"]) == {"MS1", "MSX", "MS2"}
+    assert set(favorite_types["favorite_probability_band"]) == {
+        "60.00%-70.99%", "71.00%-80.99%", "81.00%-90.99%", "91.00%-100.00%"
+    }
+    simulations = pd.read_csv(tmp_path / "market_1x2_coupon_simulations.csv")
+    assert len(simulations) == 50
+    assert simulations["correct_of_10"].between(0, 10).all()
+    assert (simulations["total_stake"] == 300).all()
+    assert report["coupon_simulation"]["groups_with_7_or_more_correct"] == int(
+        (simulations["correct_of_10"] >= 7).sum()
+    )
 
 
 def test_result_label_is_derived_from_final_goals_not_features(tmp_path):
