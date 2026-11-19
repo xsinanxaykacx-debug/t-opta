@@ -488,7 +488,7 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
     selected_candidate_bands = _select_candidate_bands(discovery)
     coupon_simulation = _coupon_simulations(validation, output_dir, selected_candidate_bands)
     overall = {
-        "method": "raw implied probabilities: 1 / decimal odds per outcome; no normalization and no margin removal",
+        "method": "de-vigged market probabilities: each raw 1 / decimal odds value divided by the complete 1X2 inverse-odds sum; empirical hit rates measured on chronological validation outcomes",
         "selected_odds_source": source_info,
         "odds_timestamp_limitation": "The archive does not provide odds capture timestamps; pre-kickoff availability is not independently verified.",
         "result_label": "FTHG/FTAG used only to derive H/D/A outcome label; never used as a predictor.",
