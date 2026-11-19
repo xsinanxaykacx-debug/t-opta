@@ -36,5 +36,7 @@ def test_dashboard_history_loader_uses_validation_wins_and_losses(tmp_path, monk
     assert record["losses"] == 5
     assert record["hit_rate_pct"] == 91.8
     assert record["partition"] == "chronological_validation"
+    assert record["validation"]["wins"] == 56
+    assert record["discovery"]["sample_size"] == 300
     assert meta["matches"] == 2112
     assert meta["odds_source"] == {"Avg": 14169}
