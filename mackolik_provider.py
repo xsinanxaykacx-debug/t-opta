@@ -89,7 +89,9 @@ def fetch_fixtures(days: int = 7, now: datetime | None = None) -> list[dict]:
         except ValueError as exc:
             raise RuntimeError(f"Maçkolik fikstür yanıtı JSON değil: {match_day}") from exc
 
-        matches = payload.get("data", {}).get("matches", {})
+        data = payload.get("data", {})
+        matches = data.get("matches", {})
+        competitions = data.get("competitions", {})
         if not isinstance(matches, dict):
             continue
         for match_id, item in matches.items():
@@ -104,6 +106,12 @@ def fetch_fixtures(days: int = 7, now: datetime | None = None) -> list[dict]:
             # Maçkolik only lists an Iddaa detail page when an Iddaa code exists.
             if not home or not away or not slug or not item.get("iddaaCode"):
                 continue
+            competition = competitions.get(str(item.get("competitionId")), {})
+            league_name = (
+                competition.get("name")
+                if isinstance(competition, dict)
+                else None
+            ) or item.get("competitionName") or item.get("tournamentName") or "Diğer ligler"
             fixtures[str(match_id)] = {
                 "match_id": str(match_id),
                 "match_slug": str(slug),
@@ -111,7 +119,7 @@ def fetch_fixtures(days: int = 7, now: datetime | None = None) -> list[dict]:
                 "away": str(away).strip(),
                 "kickoff": kickoff,
                 "competition_id": item.get("competitionId"),
-                "league_name": item.get("competitionName") or item.get("tournamentName") or ((item.get("competition") or {}).get("name") if isinstance(item.get("competition"), dict) else None) or str(item.get("competitionId") or "Diğer ligler"),
+                "league_name": str(league_name),
                 "iddaa_code": item.get("iddaaCode"),
             }
     return sorted(fixtures.values(), key=lambda row: row["kickoff"])
