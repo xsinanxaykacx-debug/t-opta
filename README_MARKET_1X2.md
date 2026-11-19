@@ -16,7 +16,7 @@ The report is chronological: 70% discovery, 15% validation, final 15% sealed and
 - `market_1x2_coupon_simulations.csv`: 50 historical validation group simulations.
 - `market_1x2_summary.json`: selected candidate bands and aggregate results.
 
-Candidate bands are selected using discovery only: at least 50 matches and at least 75% favorite hit rate. Those bands are then evaluated on validation. The final 15% holdout is not used.
+Candidate selections are made independently for every probability band and favorite type (MS1, MSX, MS2), using discovery only: each band/type pair must have at least 50 matches and at least 75% favorite hit rate. Only the qualifying band/type pairs are evaluated on validation and eligible for upcoming picks. A strong MS1 segment cannot make a weak MSX or MS2 segment eligible. The final 15% holdout is not used.
 
 ## 2. Prepare upcoming fixtures
 
