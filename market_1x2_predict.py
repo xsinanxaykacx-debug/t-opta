@@ -74,9 +74,10 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
     else:
         data["match_date"] = pd.NA
 
-    eligible = data.loc[data["selected_for_coupon"] & data["match_date"].notna()].copy()
+    eligible = data.loc[data["selected_for_coupon"]].copy()
+    dated_eligible = eligible.loc[eligible["match_date"].notna()].copy()
     eligible_days = []
-    for match_date, day_group in eligible.groupby("match_date", sort=True):
+    for match_date, day_group in dated_eligible.groupby("match_date", sort=True):
         if len(day_group) < 10:
             continue
         top_ten = day_group.sort_values(
@@ -97,8 +98,10 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
         ranked.insert(0, "pick_rank", np.arange(1, len(ranked) + 1))
         status = "ready"
     else:
-        ranked = data.iloc[0:0].copy()
-        ranked.insert(0, "pick_rank", pd.Series(dtype="int64"))
+        ranked = eligible.sort_values(
+            "favorite_probability", ascending=False, kind="stable"
+        ).copy()
+        ranked.insert(0, "pick_rank", np.arange(1, len(ranked) + 1))
         if "Date" not in data.columns:
             status = "missing_match_date_for_same_day_coupons"
         elif len(eligible) < 10:
@@ -171,7 +174,8 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
         "eligible_match_dates": int(eligible["match_date"].nunique()),
         "eligible_dates_with_10plus": int(len(eligible_days)),
         "selected_match_date": selected_match_date,
-        "picks_in_group": int(len(ranked)),
+        "picks_exported": int(len(ranked)),
+        "picks_in_group": int(len(ranked)) if status == "ready" else 0,
         "selected_bands_from_discovery": selected_bands,
         "selected_odds_source": source_info,
         "coupon_count": len(coupon_summary),
