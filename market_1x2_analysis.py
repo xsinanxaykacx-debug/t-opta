@@ -259,7 +259,7 @@ def _select_candidate_bands(discovery: pd.DataFrame, minimum_matches: int = 50,
 def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_bands: list[dict], simulations: int = 50,
                         group_size: int = 10, legs_per_coupon: int = 3,
                         stake_per_coupon: float = 100.0, seed: int = 20261119) -> dict:
-    """Evaluate only bands that passed the discovery selection gate."""
+    """Simulate real same-calendar-day groups using discovery-selected bands only."""
     selected_mask = np.zeros(len(validation), dtype=bool)
     for band in selected_bands:
         selected_mask |= (
@@ -268,21 +268,35 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
         )
     candidates = validation.loc[selected_mask].copy()
     candidates = candidates.sort_values("Date").reset_index(drop=True)
-    columns = ["simulation", "candidate_pool", "correct_of_10", "group_hit_rate",
+    columns = ["simulation", "match_date", "candidate_pool", "correct_of_10", "group_hit_rate",
                "coupon1_won", "coupon2_won", "coupon3_won", "winning_coupons",
                "total_return", "total_stake", "net_result", "any_coupon_won"]
-    if len(candidates) < group_size:
+    day_pools = [
+        (match_date, day_group.reset_index(drop=True))
+        for match_date, day_group in candidates.groupby(candidates["Date"].dt.floor("D"), sort=True)
+        if len(day_group) >= group_size
+    ]
+    if not day_pools:
         pd.DataFrame(columns=columns).to_csv(output_dir / "market_1x2_coupon_simulations.csv", index=False)
-        status = "no_discovery_band_passed" if not selected_bands else "insufficient_validation_matches"
-        return {"status": status, "candidate_matches": int(len(candidates)),
-                "minimum_required": group_size, "simulations_requested": simulations,
-                "selected_bands": selected_bands}
+        status = "no_discovery_band_passed" if not selected_bands else "no_same_day_group_of_10"
+        return {
+            "status": status,
+            "candidate_matches": int(len(candidates)),
+            "eligible_match_dates": 0,
+            "minimum_matches_per_date": group_size,
+            "simulations_requested": simulations,
+            "selected_bands": selected_bands,
+        }
+
     rng = np.random.default_rng(seed)
     odds_columns = ("odds_home", "odds_draw", "odds_away")
     rows = []
     for simulation in range(1, simulations + 1):
-        indices = rng.choice(len(candidates), size=group_size, replace=False)
-        group = candidates.iloc[indices].reset_index(drop=True)
+        # Each simulated coupon day is selected first; all 10 fixtures must share that date.
+        day_index = int(rng.integers(0, len(day_pools)))
+        match_date, day_candidates = day_pools[day_index]
+        indices = rng.choice(len(day_candidates), size=group_size, replace=False)
+        group = day_candidates.iloc[indices].reset_index(drop=True)
         coupons = []
         for coupon_index in range(3):
             coupon = group.iloc[coupon_index * legs_per_coupon:(coupon_index + 1) * legs_per_coupon]
@@ -298,7 +312,8 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
         total_stake = 3.0 * stake_per_coupon
         correct = int(group["favorite_correct"].sum())
         rows.append({
-            "simulation": simulation, "candidate_pool": len(candidates),
+            "simulation": simulation, "match_date": str(match_date),
+            "candidate_pool": len(day_candidates),
             "correct_of_10": correct, "group_hit_rate": correct / group_size,
             "coupon1_won": coupons[0][0], "coupon2_won": coupons[1][0],
             "coupon3_won": coupons[2][0],
@@ -313,7 +328,10 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
     result.to_csv(output_dir / "market_1x2_coupon_simulations.csv", index=False)
     return {
         "status": "completed", "simulation_count": simulations,
-        "candidate_matches": int(len(candidates)), "selected_bands": selected_bands, "group_size": group_size,
+        "candidate_matches": int(len(candidates)),
+        "eligible_match_dates": len(day_pools),
+        "max_candidates_on_one_date": max(len(day_group) for _, day_group in day_pools),
+        "selected_bands": selected_bands, "group_size": group_size,
         "coupons_per_group": 3, "legs_per_coupon": legs_per_coupon,
         "unused_match_per_group": group_size - 3 * legs_per_coupon,
         "stake_per_coupon": stake_per_coupon, "stake_per_group": total_stake,
@@ -326,9 +344,8 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
         "profitable_groups": int((result["net_result"] > 0).sum()),
         "break_even_or_better_groups": int((result["net_result"] >= 0).sum()),
         "candidate_band_policy": "Discovery-only gate: include bands with at least 50 discovery matches and at least 75% favorite hit rate; evaluate those selected bands on validation.",
-        "simulation_note": "50 independently drawn groups sampled without replacement within each group from validation favorites in the discovery-selected probability bands; groups may overlap between draws. Three 3-leg coupons per group, 100 TL stake each; the 10th match is unused. Actual odds of the selected favorite are used. Historical out-of-sample simulation only, not a forecast.",
+        "simulation_note": "50 independently drawn same-calendar-day groups. Each group contains 10 distinct validation fixtures from one date in discovery-selected probability bands; groups may overlap between simulations. Three 3-leg coupons per group, 100 TL stake each; the 10th match is unused. Actual odds of the selected favorite are used. Historical out-of-sample simulation only, not a forecast.",
     }
-
 
 def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
     required = {"Date", "FTHG", "FTAG"}
