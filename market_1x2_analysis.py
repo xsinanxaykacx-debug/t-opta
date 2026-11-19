@@ -352,6 +352,9 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
     result.to_csv(output_dir / "market_1x2_coupon_simulations.csv", index=False)
     return {
         "status": "completed", "simulation_count": simulations,
+        "unique_fixture_groups": len(set(fixture_group_keys)),
+        "duplicate_fixture_group_draws": simulations - len(set(fixture_group_keys)),
+        "distinct_fixtures_used": len(fixtures_used),
         "candidate_matches": int(len(candidates)),
         "eligible_match_dates": len(day_pools),
         "max_candidates_on_one_date": max(len(day_group) for _, day_group in day_pools),
