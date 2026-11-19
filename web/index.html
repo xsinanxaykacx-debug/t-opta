@@ -50,21 +50,21 @@
       <section id="rankedPanels" class="hidden" aria-live="polite">
         <section class="rank-panel rank-green">
           <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div><div class="text-xs font-bold tracking-widest text-green-300">1. SEÇENEK · EN GÜÇLÜ</div><p class="text-xs text-green-100/70 mt-1">Piyasanın en yüksek olasılık verdiği sonuç</p></div>
+            <div><div class="text-xs font-bold tracking-widest text-green-300">YÜKSEK OLASILIK · %80–100</div><p class="text-xs text-green-100/70 mt-1">En yüksek MS1/MSX/MS2 olasılığı %80 ile %100 arasında</p></div>
             <span id="firstBadge" class="rounded-full border border-green-400/50 bg-green-400/15 px-3 py-1 text-xs font-bold text-green-200">0 MAÇ</span>
           </div>
           <div id="firstList" class="grid md:grid-cols-2 gap-3"></div>
         </section>
         <section class="rank-panel rank-orange">
           <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div><div class="text-xs font-bold tracking-widest text-orange-300">2. SEÇENEK · İKİNCİ İHTİMAL</div><p class="text-xs text-orange-100/70 mt-1">Piyasanın ikinci sıraya koyduğu sonuç</p></div>
+            <div><div class="text-xs font-bold tracking-widest text-orange-300">ORTA-YÜKSEK OLASILIK · %60–79,99</div><p class="text-xs text-orange-100/70 mt-1">En yüksek MS1/MSX/MS2 olasılığı %60 ile %79,99 arasında</p></div>
             <span id="secondBadge" class="rounded-full border border-orange-400/50 bg-orange-400/15 px-3 py-1 text-xs font-bold text-orange-200">0 MAÇ</span>
           </div>
           <div id="secondList" class="grid md:grid-cols-2 gap-3"></div>
         </section>
         <section class="rank-panel rank-blue">
           <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div><div class="text-xs font-bold tracking-widest text-blue-300">3. SEÇENEK · ÜÇÜNCÜ İHTİMAL</div><p class="text-xs text-blue-100/70 mt-1">Piyasanın en düşük olasılık verdiği sonuç</p></div>
+            <div><div class="text-xs font-bold tracking-widest text-blue-300">ORTA OLASILIK · %50–59,99</div><p class="text-xs text-blue-100/70 mt-1">En yüksek MS1/MSX/MS2 olasılığı %50 ile %59,99 arasında</p></div>
             <span id="thirdBadge" class="rounded-full border border-blue-400/50 bg-blue-400/15 px-3 py-1 text-xs font-bold text-blue-200">0 MAÇ</span>
           </div>
           <div id="thirdList" class="grid md:grid-cols-2 gap-3"></div>
@@ -100,9 +100,9 @@ function renderRankedPick(item, rank){
   const m=item.match, outcome=item.outcome, probability=item.probability;
   const color=rank===1?'text-green-300':rank===2?'text-orange-300':'text-blue-300';
   const border=rank===1?'border-green-300/20':rank===2?'border-orange-300/20':'border-blue-300/20';
-  const history=rank===1
-    ? (m.eligible ? '<span class="text-[10px] text-green-300">Tarihsel seçim filtresini geçti</span>' : '<span class="text-[10px] text-slate-400">Tarihsel seçim filtresini geçmedi</span>')
-    : '<span class="text-[10px] text-slate-500">Sıralama yalnızca güncel 1/oran değerine göre</span>';
+  const history=m.eligible
+    ? '<span class="text-[10px] text-green-300">Tarihsel seçim filtresini geçti</span>'
+    : '<span class="text-[10px] text-slate-400">Tarihsel seçim filtresini geçmedi</span>';
   return `
   <article class="rank-pick">
     <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
@@ -124,18 +124,25 @@ function renderRankedPick(item, rank){
   </article>`;
 }
 function renderRankedPanels(matches){
-  const ranked=[[],[],[]];
+  // Her maçta yalnızca en yüksek 1X2 olasılığını seç; rengi olasılık bandı belirler.
+  const bands=[[],[],[]];
   for(const match of matches){
     const outcomes=[
       {outcome:'MS1',probability:Number(match.probabilities_pct['1'])},
       {outcome:'MSX',probability:Number(match.probabilities_pct.X)},
       {outcome:'MS2',probability:Number(match.probabilities_pct['2'])}
-    ].sort((a,b)=>b.probability-a.probability);
-    outcomes.forEach((item,index)=>ranked[index].push({match,...item}));
+    ];
+    const favorite=outcomes.reduce((best,item)=>item.probability>best.probability?item:best);
+    const probability=favorite.probability;
+    const item={match,...favorite};
+    if(probability>=80 && probability<=100) bands[0].push(item);
+    else if(probability>=60 && probability<80) bands[1].push(item);
+    else if(probability>=50 && probability<60) bands[2].push(item);
+    // %50 altındaki maçlar üç olasılık kartına da alınmaz.
   }
-  ranked.forEach(list=>list.sort((a,b)=>b.probability-a.probability));
+  bands.forEach(list=>list.sort((a,b)=>b.probability-a.probability));
   const ids=[['firstList','firstBadge'],['secondList','secondBadge'],['thirdList','thirdBadge']];
-  ranked.forEach((list,index)=>{
+  bands.forEach((list,index)=>{
     $(ids[index][0]).innerHTML=list.map(item=>renderRankedPick(item,index+1)).join('');
     $(ids[index][1]).textContent=list.length+' MAÇ';
   });
