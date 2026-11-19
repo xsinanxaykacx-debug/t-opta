@@ -170,6 +170,37 @@ def _report_rows(data: pd.DataFrame, scope: str, keys: list[str]) -> list[dict]:
     return rows
 
 
+def _wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float, float]:
+    """95% Wilson interval for an observed binary frequency."""
+    if total <= 0:
+        return np.nan, np.nan
+    rate = successes / total
+    denominator = 1.0 + z * z / total
+    center = (rate + z * z / (2.0 * total)) / denominator
+    radius = z * np.sqrt(rate * (1.0 - rate) / total + z * z / (4.0 * total * total)) / denominator
+    return float(max(0.0, center - radius)), float(min(1.0, center + radius))
+
+
+def _calibration_summary_rows(calibration_rows: list[dict]) -> list[dict]:
+    """Sample-weighted calibration diagnostics, with sparse-bin guardrails."""
+    rows = []
+    calibration = pd.DataFrame(calibration_rows)
+    for (partition, outcome), group in calibration.groupby(["partition", "outcome"], sort=True):
+        weights = group["matches"].to_numpy(float)
+        errors = group["calibration_error"].to_numpy(float)
+        reliable_bins = group.loc[group["matches"] >= 30, "calibration_error"].abs()
+        rows.append({
+            "partition": partition,
+            "outcome": outcome,
+            "matches": int(weights.sum()),
+            "weighted_absolute_calibration_error": float(np.average(np.abs(errors), weights=weights)),
+            "weighted_signed_calibration_error": float(np.average(errors, weights=weights)),
+            "bins_with_at_least_30_matches": int((group["matches"] >= 30).sum()),
+            "max_absolute_bin_error_n_ge_30": float(reliable_bins.max()) if len(reliable_bins) else np.nan,
+        })
+    return rows
+
+
 def _outcome_calibration_rows(data: pd.DataFrame, partition: str) -> list[dict]:
     """Reliability table for each H/D/A probability, independent of favorite selection."""
     rows = []
@@ -188,6 +219,8 @@ def _outcome_calibration_rows(data: pd.DataFrame, partition: str) -> list[dict]:
                 continue
             mean_probability = float(probabilities[mask].mean())
             observed_rate = float(observed[mask].mean())
+            successes = int(observed[mask].sum())
+            ci_lower, ci_upper = _wilson_interval(successes, count)
             rows.append({
                 "partition": partition,
                 "outcome": name,
@@ -195,6 +228,8 @@ def _outcome_calibration_rows(data: pd.DataFrame, partition: str) -> list[dict]:
                 "matches": count,
                 "mean_predicted_probability": mean_probability,
                 "observed_frequency": observed_rate,
+                "observed_frequency_ci95_lower": ci_lower,
+                "observed_frequency_ci95_upper": ci_upper,
                 "calibration_error": observed_rate - mean_probability,
                 "brier_score_one_vs_rest": float(np.mean((probabilities[mask] - observed[mask]) ** 2)),
             })
@@ -254,8 +289,12 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
     calibration_rows = []
     for partition_name, part in (("discovery", discovery), ("validation", validation)):
         calibration_rows.extend(_outcome_calibration_rows(part, partition_name))
-    pd.DataFrame(calibration_rows).to_csv(
+    calibration_frame = pd.DataFrame(calibration_rows)
+    calibration_frame.to_csv(
         output_dir / "market_1x2_outcome_calibration.csv", index=False
+    )
+    pd.DataFrame(_calibration_summary_rows(calibration_rows)).to_csv(
+        output_dir / "market_1x2_calibration_summary.csv", index=False
     )
 
     overall = {
