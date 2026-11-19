@@ -69,6 +69,23 @@ def _local_kickoff(match: dict) -> datetime | None:
         return None
 
 
+def _is_womens_fixture(home: str, away: str, league: str) -> bool:
+    """Identify women's fixtures from explicit team/competition labels."""
+    labels = " ".join((str(home or ""), str(away or ""), str(league or ""))).casefold()
+    # Maçkolik commonly marks women's teams with (K); international feeds
+    # also use Women/Women's, Ladies, Female, Girls and Turkish labels.
+    markers = (
+        r"\(\s*k\s*\)",
+        r"\bwomen(?:'s)?\b",
+        r"\bladies\b",
+        r"\bfemale\b",
+        r"\bgirls?\b",
+        r"\bkadın(?:lar)?\b",
+        r"\bkız(?:lar)?\b",
+    )
+    return any(re.search(pattern, labels) for pattern in markers)
+
+
 def fetch_fixtures(days: int = 7, now: datetime | None = None) -> list[dict]:
     """Return future, pre-match football fixtures listed by Mackolik."""
     if days < 1 or days > 14:
@@ -102,6 +119,8 @@ def fetch_fixtures(days: int = 7, now: datetime | None = None) -> list[dict]:
                 continue
             home = (item.get("homeTeam") or {}).get("name")
             away = (item.get("awayTeam") or {}).get("name")
+            if _is_womens_fixture(home, away, ""):
+                continue
             slug = item.get("matchSlug")
             # Maçkolik only lists an Iddaa detail page when an Iddaa code exists.
             if not home or not away or not slug or not item.get("iddaaCode"):
@@ -112,6 +131,8 @@ def fetch_fixtures(days: int = 7, now: datetime | None = None) -> list[dict]:
                 if isinstance(competition, dict)
                 else None
             ) or item.get("competitionName") or item.get("tournamentName") or "Diğer ligler"
+            if _is_womens_fixture(home, away, league_name):
+                continue
             fixtures[str(match_id)] = {
                 "match_id": str(match_id),
                 "match_slug": str(slug),
