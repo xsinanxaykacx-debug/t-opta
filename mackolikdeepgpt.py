@@ -1770,14 +1770,8 @@ def hata_raporu_yaz(hatalar, dosya):
 
 def excel_ara_kaydet(genis_veri, oran_kolonlari, excel_dosya, hata_dosya, hatalar):
     oranlar = list(SABIT_ORAN_KOLONLARI)
-    ist_kolonlari = []
-    for bilgi in genis_veri.values():
-        if not isinstance(bilgi, dict):
-            continue
-        for kolon in bilgi.keys():
-            if str(kolon).startswith(ISTATISTIK_ON_EK) and kolon not in ist_kolonlari:
-                ist_kolonlari.append(kolon)
-    tum_kolonlar = MAC_KOLONLARI + oranlar + ist_kolonlari
+    # Çıktı her zaman tam 15 sütundur; eski checkpoint'teki ek alanlar yazılmaz.
+    tum_kolonlar = MAC_KOLONLARI + oranlar
     satirlar = []
     for bilgi in genis_veri.values():
         if not isinstance(bilgi, dict):
