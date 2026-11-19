@@ -155,8 +155,17 @@ def _report_rows(data: pd.DataFrame, scope: str, keys: list[str]) -> list[dict]:
         for code, name in enumerate(("home", "draw", "away")):
             selected = pred == code
             row[f"{name}_predicted_count"] = int(selected.sum())
-            row[f"{name}_predicted_accuracy"] = float(np.mean(actual[selected] == code)) if selected.any() else np.nan
-            row[f"{name}_actual_count"] = int(np.sum(actual == code))
+            precision = float(np.mean(actual[selected] == code)) if selected.any() else np.nan
+            actual_count = int(np.sum(actual == code))
+            recall = float(np.sum((pred == code) & (actual == code)) / actual_count) if actual_count else np.nan
+            row[f"{name}_predicted_accuracy"] = precision
+            row[f"{name}_actual_count"] = actual_count
+            row[f"{name}_actual_recall"] = recall
+            row[f"{name}_f1"] = (
+                2 * precision * recall / (precision + recall)
+                if np.isfinite(precision) and np.isfinite(recall) and (precision + recall) > 0
+                else np.nan
+            )
         rows.append(row)
     return rows
 
