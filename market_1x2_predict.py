@@ -60,17 +60,51 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
         "Outside discovery-selected bands",
     )
 
-    # Preserve every input fixture in the picks file; rank eligible picks by raw probability.
-    ranked = data.loc[data["selected_for_coupon"]].sort_values(
-        ["favorite_probability"], ascending=False, kind="stable"
-    ).head(10).copy()
-    ranked.insert(0, "pick_rank", np.arange(1, len(ranked) + 1))
+    # Coupons must contain ten eligible fixtures from one calendar date.
+    if "Date" in data.columns:
+        parsed_dates = pd.to_datetime(data["Date"], errors="coerce", utc=True)
+        data["match_date"] = parsed_dates.dt.strftime("%Y-%m-%d")
+    else:
+        data["match_date"] = pd.NA
+
+    eligible = data.loc[data["selected_for_coupon"] & data["match_date"].notna()].copy()
+    eligible_days = []
+    for match_date, day_group in eligible.groupby("match_date", sort=True):
+        if len(day_group) < 10:
+            continue
+        top_ten = day_group.sort_values(
+            ["favorite_probability"], ascending=False, kind="stable"
+        ).head(10).copy()
+        eligible_days.append((match_date, top_ten))
+
+    selected_match_date = None
+    if eligible_days:
+        # Prefer the date whose ten strongest market favorites have the highest mean raw probability.
+        selected_match_date, ranked = max(
+            eligible_days,
+            key=lambda item: float(item[1]["favorite_probability"].mean()),
+        )
+        ranked = ranked.sort_values(
+            ["favorite_probability"], ascending=False, kind="stable"
+        ).copy()
+        ranked.insert(0, "pick_rank", np.arange(1, len(ranked) + 1))
+        status = "ready"
+    else:
+        ranked = data.iloc[0:0].copy()
+        ranked.insert(0, "pick_rank", pd.Series(dtype="int64"))
+        if "Date" not in data.columns:
+            status = "missing_match_date_for_same_day_coupons"
+        elif len(eligible) < 10:
+            status = "fewer_than_10_eligible_fixtures"
+        else:
+            status = "no_same_day_group_of_10"
+
     ranked.to_csv(output_dir / "upcoming_market_picks.csv", index=False)
     data.to_csv(output_dir / "all_upcoming_market_favorites.csv", index=False)
 
     coupon_rows = []
     coupon_summary = []
-    if len(ranked) >= 10:
+    if status == "ready" and len(ranked) == 10:
         # Interleave ranks so the three coupons receive similarly ranked selections.
         for coupon_index, coupon_name in enumerate(("Kupon 1", "Kupon 2", "Kupon 3")):
             indices = [coupon_index, coupon_index + 3, coupon_index + 6]
@@ -111,10 +145,8 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
             "raw_implied_probability_pct": float(unused["favorite_probability_pct"]),
             "favorite_odds": float(unused["favorite_odds"]),
         }
-        status = "ready"
     else:
         unused_pick = None
-        status = "fewer_than_10_eligible_fixtures"
     pd.DataFrame(coupon_rows, columns=[
         "coupon", "leg", "pick_rank", "fixture", "market_favorite",
         "raw_implied_probability_pct", "favorite_odds"
@@ -129,6 +161,9 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
         "fixtures_received": int(len(data)),
         "fixtures_with_complete_odds": int(data["odds_valid"].sum()),
         "eligible_fixtures": int(data["selected_for_coupon"].sum()),
+        "eligible_match_dates": int(eligible["match_date"].nunique()),
+        "eligible_dates_with_10plus": int(len(eligible_days)),
+        "selected_match_date": selected_match_date,
         "picks_in_group": int(len(ranked)),
         "selected_bands_from_discovery": selected_bands,
         "selected_odds_source": source_info,
@@ -136,7 +171,7 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
         "coupon_stake_total": 300.0 if coupon_summary else 0.0,
         "coupons": coupon_summary,
         "unused_tenth_pick": unused_pick,
-        "method": "Market favorite = highest raw 1/decimal-odds value; no de-vigging or normalization.",
+        "method": "Market favorite = highest raw 1/decimal-odds value; no de-vigging or normalization. Coupons use ten fixtures from one calendar date.",
         "warning": "Only enter odds captured before kickoff. This script does not independently verify odds timestamps or fixture status.",
     }
     (output_dir / "upcoming_prediction_summary.json").write_text(
