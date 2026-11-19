@@ -170,6 +170,36 @@ def _report_rows(data: pd.DataFrame, scope: str, keys: list[str]) -> list[dict]:
     return rows
 
 
+def _outcome_calibration_rows(data: pd.DataFrame, partition: str) -> list[dict]:
+    """Reliability table for each H/D/A probability, independent of favorite selection."""
+    rows = []
+    edges = np.linspace(0.0, 1.0, 11)
+    probability_columns = ("p_home", "p_draw", "p_away")
+    outcome_names = ("home", "draw", "away")
+    actual = data["actual_code"].to_numpy(int)
+    for code, (name, column) in enumerate(zip(outcome_names, probability_columns)):
+        probabilities = data[column].to_numpy(float)
+        observed = (actual == code).astype(float)
+        bin_ids = np.minimum(np.digitize(probabilities, edges, right=False) - 1, 9)
+        for bin_index in range(10):
+            mask = bin_ids == bin_index
+            count = int(mask.sum())
+            if not count:
+                continue
+            mean_probability = float(probabilities[mask].mean())
+            observed_rate = float(observed[mask].mean())
+            rows.append({
+                "partition": partition,
+                "outcome": name,
+                "probability_band": f"{edges[bin_index]:.0%}-{edges[bin_index + 1]:.0%}",
+                "matches": count,
+                "mean_predicted_probability": mean_probability,
+                "observed_frequency": observed_rate,
+                "calibration_error": observed_rate - mean_probability,
+                "brier_score_one_vs_rest": float(np.mean((probabilities[mask] - observed[mask]) ** 2)),
+            })
+    return rows
+
 def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
     required = {"Date", "FTHG", "FTAG"}
     missing = sorted(required - set(frame.columns))
@@ -220,6 +250,13 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
             })
             bin_rows.append(stats)
     pd.DataFrame(bin_rows).to_csv(output_dir / "market_1x2_probability_bands.csv", index=False)
+
+    calibration_rows = []
+    for partition_name, part in (("discovery", discovery), ("validation", validation)):
+        calibration_rows.extend(_outcome_calibration_rows(part, partition_name))
+    pd.DataFrame(calibration_rows).to_csv(
+        output_dir / "market_1x2_outcome_calibration.csv", index=False
+    )
 
     overall = {
         "method": "de-vigged implied probabilities from one complete bookmaker H/D/A triplet",
