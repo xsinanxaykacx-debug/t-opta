@@ -31,7 +31,7 @@ def test_market_probabilities_remove_overround_and_use_complete_source():
         "B365A": [4.5, 4.5],
     })
     probabilities, info = market.market_probabilities(frame)
-    assert info["source"] == "Avg"
+    assert info["source_counts"] == {"Avg": 1, "BbAv": 0, "B365": 1}
     assert probabilities.loc[0, "p_home"] == pytest.approx((1 / 2) / (1 / 2 + 1 / 3 + 1 / 4))
     assert probabilities.loc[1, "p_home"] == pytest.approx((1 / 1.8) / (1 / 1.8 + 1 / 3.2 + 1 / 4.5))
     assert probabilities.loc[1, "odds_source"] == "B365"
@@ -57,7 +57,7 @@ def test_chronological_split_uses_whole_dates_and_seals_last_partition():
 
 def test_build_reports_creates_market_only_reports_and_does_not_score_holdout(tmp_path):
     report = market.build_reports(_frame(), tmp_path)
-    assert report["discovery"]["rows"] > report["validation"]["rows"]
+    assert report["discovery"]["rows"] > report["validation"]["rows"]\n    assert report["selected_odds_source"]["source_counts"]["Avg"] == 120
     assert report["sealed_holdout"]["metrics_not_computed"] is True
     assert report["odds_timestamp_limitation"]
     segments = pd.read_csv(tmp_path / "market_1x2_segments.csv")
