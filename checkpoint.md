@@ -137,3 +137,12 @@
 - Added a unit test checking all three outcomes and both development partitions are represented and that every match contributes exactly one bin per outcome.
 - Workflow artifact upload already includes the entire `results_market_1x2/` directory, so the new calibration CSV will be included automatically.
 - Implementation commits: `53100c3171488a561dddbecde4434f5af8728847` and `b54de289e8cb1356f72d65353f098fd8958de4fa`. Awaiting CI on the latest branch head; no calibration results are claimed until the new artifact is produced.
+
+
+## 1X2 calibration uncertainty refinement — 2026-11-19
+- Latest branch head `b668d5dca76ee1051292402f1945afba273851e2` passed all three GitHub Actions workflows: `tests`, `Python tests`, and `Odds-only model validation`; both the complete test job and real-data market-analysis job completed successfully.
+- Inspected the workflow artifact `14511972223`. The 1X2 validation partition contains 2,112 matches; discovery contains 9,933. The sealed 2,124-match holdout remains unscored.
+- Validation reliability observations: Draw probabilities in the 20–30% band: 1,679 matches, predicted mean 26.09%, observed 24.96%. Away probabilities in 60–70%: 67 matches, predicted 64.29%, observed 79.10%; 70–80%: 30 matches, predicted 74.39%, observed 90.00%. These higher-away bins are small and must not be treated as a proven edge.
+- Added Wilson 95% confidence intervals for observed outcome frequencies in each probability bin and a sample-weighted calibration summary per outcome/partition. Summary includes weighted absolute/signed calibration error and a maximum absolute bin error restricted to bins with at least 30 matches, to reduce small-bin overinterpretation.
+- Added tests for confidence-interval containment, summary coverage, and match accounting. Awaiting CI on these new commits; no new results are claimed until CI and the regenerated artifact succeed.
+- The odds timestamp limitation remains: pre-kickoff capture cannot be independently verified. No ROI/edge claim; no holdout scoring; PR #5 remains draft/open; main and legacy `BOT.py` untouched.
