@@ -42,25 +42,39 @@ def _valid_odds(series: pd.Series) -> np.ndarray:
 
 
 def market_probabilities(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """Select one complete H/D/A odds source; never mix bookmakers."""
+    """Select one complete H/D/A triplet per row; never mix bookmakers."""
     n = len(frame)
-    selected = None
-    selected_columns = None
+    probs = np.full((n, 3), np.nan, dtype=float)
+    odds_selected = np.full((n, 3), np.nan, dtype=float)
+    margin = np.full(n, np.nan, dtype=float)
+    source_selected = np.full(n, "", dtype=object)
+    columns_by_source = {}
     for source, home_aliases, draw_aliases, away_aliases in SOURCE_GROUPS:
         columns = (
             _find_column(frame, home_aliases),
             _find_column(frame, draw_aliases),
             _find_column(frame, away_aliases),
         )
-        if all(columns):
-            raw = [_valid_odds(frame[column]) for column in columns]
-            valid = np.logical_and.reduce([np.isfinite(values) for values in raw])
-            if valid.any():
-                selected, selected_columns = (source, raw, valid), columns
-                break
-    if selected is None:
+        if not all(columns):
+            continue
+        raw = [_valid_odds(frame[column]) for column in columns]
+        valid = np.logical_and.reduce([np.isfinite(values) for values in raw])
+        use = valid & (source_selected == "")
+        if not use.any():
+            continue
+        inverse = np.column_stack([1.0 / values for values in raw])
+        inverse_sum = inverse.sum(axis=1)
+        probs[use] = inverse[use] / inverse_sum[use, None]
+        odds_selected[use] = np.column_stack(raw)[use]
+        margin[use] = inverse_sum[use] - 1.0
+        source_selected[use] = source
+        columns_by_source[source] = list(columns)
+
+    valid_all = source_selected != ""
+    if not valid_all.any():
         available = [str(c) for c in frame.columns if any(
-            token in str(c).casefold() for token in ("avgh", "avgd", "avga", "bbavh", "bbavd", "bbava", "b365h", "b365d", "b365a")
+            token in str(c).casefold() for token in
+            ("avgh", "avgd", "avga", "bbavh", "bbavd", "bbava", "b365h", "b365d", "b365a")
         )]
         raise ValueError(
             "Complete 1X2 odds triplet not found. Recognized aliases: "
@@ -68,21 +82,16 @@ def market_probabilities(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
             + "; candidate columns present: " + repr(available)
         )
 
-    source, odds, valid = selected
-    inverse = np.column_stack([1.0 / values for values in odds])
-    inverse_sum = inverse.sum(axis=1)
-    probs = np.full((n, 3), np.nan, dtype=float)
-    probs[valid] = inverse[valid] / inverse_sum[valid, None]
-    margin = np.full(n, np.nan, dtype=float)
-    margin[valid] = inverse_sum[valid] - 1.0
     result = pd.DataFrame(probs, columns=["p_home", "p_draw", "p_away"], index=frame.index)
     result["market_margin"] = margin
-    result["odds_home"] = odds[0]
-    result["odds_draw"] = odds[1]
-    result["odds_away"] = odds[2]
-    result["odds_source"] = source
-    result["odds_valid"] = valid
-    return result, {"source": source, "columns": list(selected_columns), "valid_matches": int(valid.sum())}
+    result["odds_home"] = odds_selected[:, 0]
+    result["odds_draw"] = odds_selected[:, 1]
+    result["odds_away"] = odds_selected[:, 2]
+    result["odds_source"] = source_selected
+    result["odds_valid"] = valid_all
+    source_counts = {str(source): int(np.sum(source_selected == source)) for source in SOURCE_GROUPS and [s[0] for s in SOURCE_GROUPS]}
+    return result, {"source_counts": source_counts, "valid_matches": int(valid_all.sum()),
+                    "source_columns": columns_by_source}
 
 
 def _season_label(dates: pd.Series) -> pd.Series:
