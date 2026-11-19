@@ -16,7 +16,7 @@ The report is chronological: 70% discovery, 15% validation, final 15% sealed and
 - `market_1x2_coupon_simulations.csv`: up to 50 historical validation group simulations. Only unique fixture combinations are evaluated; if fewer than 50 distinct same-day groups exist, all available groups are reported and the shortfall is explicit. Duplicate resampling is prohibited. Historical coupons use the same probability ranking and interleaved 3-leg distribution as the upcoming picker.
 - `market_1x2_summary.json`: selected candidate bands and aggregate results.
 
-Candidate selections are made independently for every probability band and favorite type (MS1, MSX, MS2), using discovery only: each band/type pair must have at least 50 matches and at least 75% favorite hit rate. Only the qualifying band/type pairs are evaluated on validation and eligible for upcoming picks. A strong MS1 segment cannot make a weak MSX or MS2 segment eligible. The final 15% holdout is not used.
+Candidate selections are made independently for every probability band and favorite type (MS1, MSX, MS2), using discovery only: each band/type pair must have at least 50 matches, at least 75% favorite hit rate, and a Wilson 95% confidence-interval lower bound of at least 75%. Only the qualifying band/type pairs are evaluated on validation and eligible for upcoming picks. A strong MS1 segment cannot make a weak MSX or MS2 segment eligible. The final 15% holdout is not used.
 
 ## 2. Prepare upcoming fixtures
 
