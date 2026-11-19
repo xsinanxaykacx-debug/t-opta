@@ -29,6 +29,7 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
     """Predict the market favorite from odds only; no result/feature columns required."""
     if frame.empty:
         raise ValueError("Upcoming fixture CSV is empty.")
+    output_dir.mkdir(parents=True, exist_ok=True)
     market, source_info = market_probabilities(frame)
     data = pd.concat([frame.reset_index(drop=True), market.reset_index(drop=True)], axis=1)
     probability_matrix = data[["p_home", "p_draw", "p_away"]].to_numpy(float)
@@ -49,11 +50,6 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
     )
 
     # Preserve every input fixture in the picks file; rank eligible picks by raw probability.
-    sort_columns = ["favorite_probability"]
-    ascending = [False]
-    if "Date" in data.columns:
-        sort_columns.insert(0, "Date")
-        ascending.insert(0, True)
     ranked = data.loc[data["selected_for_coupon"]].sort_values(
         ["favorite_probability"], ascending=False, kind="stable"
     ).head(10).copy()
@@ -122,7 +118,6 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
         "method": "Market favorite = highest raw 1/decimal-odds value; no de-vigging or normalization.",
         "warning": "Only enter odds captured before kickoff. This script does not independently verify odds timestamps or fixture status.",
     }
-    output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "upcoming_prediction_summary.json").write_text(
         json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
     )
