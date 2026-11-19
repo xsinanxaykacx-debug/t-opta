@@ -108,7 +108,7 @@ function renderHistoricalPerformance(m){
   const h=m.historical_performance || {}, v=h.validation || h, d=h.discovery || {};
   if(!Number(v.sample_size) && !Number(d.sample_size)) return `<div class="mt-3 rounded-lg border border-slate-700/60 bg-slate-950/60 px-3 py-2 text-xs text-slate-400">Bu sonuç ve olasılık aralığı için tarihsel örnek yok.</div>`;
   const validation = Number(v.sample_size)
-    ? `<div class="mt-1 text-sm font-bold text-slate-100">${v.wins}/${v.sample_size} kazandı · ${v.losses} kayıp · <span class="text-emerald-300">${pct(v.hit_rate_pct)}</span></div>`
+    ? `<div class="mt-1 text-sm font-bold text-slate-100">Bağımsız doğrulama: ${v.wins}/${v.sample_size} kazandı · ${v.losses} kayıp · <span class="text-emerald-300">${pct(v.hit_rate_pct)}</span></div>`
     : `<div class="mt-1 text-xs text-slate-400">Bağımsız doğrulamada örnek yok.</div>`;
   const discovery = Number(d.sample_size)
     ? `<div class="mt-1 text-[11px] text-slate-400">Keşif verisi: ${d.wins}/${d.sample_size} kazandı · ${d.losses} kayıp · ${pct(d.hit_rate_pct)}</div>`
