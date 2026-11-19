@@ -1,6 +1,7 @@
 import json
 
 import pandas as pd
+import pytest
 
 from market_1x2_predict import predict_upcoming
 
@@ -12,13 +13,13 @@ def _upcoming(n=10, same_day=False):
         "Date": dates,
         "HomeTeam": [f"Home {i}" for i in range(n)],
         "AwayTeam": [f"Away {i}" for i in range(n)],
-        "AvgH": [1.3] * n,
-        "AvgD": [4.0] * n,
-        "AvgA": [5.0] * n,
+        "AvgH": [1.15] * n,
+        "AvgD": [6.0] * n,
+        "AvgA": [10.0] * n,
     })
 
 
-def test_upcoming_picker_uses_raw_odds_and_builds_three_coupons(tmp_path):
+def test_upcoming_picker_uses_normalized_probabilities_and_builds_three_coupons(tmp_path):
     selected_bands = [{
         "band": "71.00%-80.99%", "lower": 0.71, "upper": 0.81,
         "favorite_type": "MS1", "discovery_matches": 800, "discovery_hit_rate": 0.77,
@@ -35,8 +36,10 @@ def test_upcoming_picker_uses_raw_odds_and_builds_three_coupons(tmp_path):
     assert result["selected_match_date"] == "2026-11-20"
     picks = pd.read_csv(tmp_path / "upcoming_market_picks.csv")
     assert picks.iloc[0]["market_favorite"] == "MS1"
-    assert picks.iloc[0]["favorite_probability_pct"] == 100 / 1.3
-    assert picks.iloc[0]["favorite_odds"] == 1.3
+    raw_home = 1 / 1.15
+    raw_total = (1 / 1.15) + (1 / 6.0) + (1 / 10.0)
+    assert picks.iloc[0]["favorite_probability_pct"] == pytest.approx(100 * raw_home / raw_total)
+    assert picks.iloc[0]["favorite_odds"] == 1.15
     coupons = pd.read_csv(tmp_path / "upcoming_coupons.csv")
     assert len(coupons) == 9
     assert coupons.groupby("coupon").size().to_dict() == {
