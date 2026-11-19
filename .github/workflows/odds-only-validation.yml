@@ -1,0 +1,37 @@
+name: Odds-only model validation
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  market-analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run odds-only validation on repository dataset
+        run: python odds_only_bot.py xgo.csv --out results_odds_only
+      - name: Run 1X2 market diagnostics
+        run: python market_1x2_analysis.py xgo.csv --out results_market_1x2
+      - name: Upload validation reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: odds-only-and-1x2-validation-reports
+          path: |
+            results_odds_only/
+            results_market_1x2/
+          if-no-files-found: error
