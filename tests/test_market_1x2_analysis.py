@@ -64,7 +64,8 @@ def test_build_reports_creates_market_only_reports_and_does_not_score_holdout(tm
     assert report["selected_odds_source"]["source_counts"]["Avg"] == 120
     assert report["method"].startswith("raw implied probabilities")
     assert report["coupon_simulation"]["status"] == "completed"
-    assert report["coupon_simulation"]["simulation_count"] == 50\n    assert report["coupon_simulation"]["eligible_match_dates"] >= 1
+    assert report["coupon_simulation"]["simulation_count"] == 50
+    assert report["coupon_simulation"]["eligible_match_dates"] >= 1
     assert report["selected_candidate_bands_from_discovery"]
     assert all(item["discovery_matches"] >= 50 and item["discovery_hit_rate"] >= 0.75
                for item in report["selected_candidate_bands_from_discovery"])
@@ -101,7 +102,9 @@ def test_build_reports_creates_market_only_reports_and_does_not_score_holdout(tm
     }
     simulations = pd.read_csv(tmp_path / "market_1x2_coupon_simulations.csv")
     assert len(simulations) == 50
-    assert simulations["correct_of_10"].between(0, 10).all()\n    assert simulations["match_date"].nunique() <= report["coupon_simulation"]["eligible_match_dates"]\n    assert (simulations["candidate_pool"] >= 10).all()
+    assert simulations["correct_of_10"].between(0, 10).all()
+    assert simulations["match_date"].nunique() <= report["coupon_simulation"]["eligible_match_dates"]
+    assert (simulations["candidate_pool"] >= 10).all()
     assert (simulations["total_stake"] == 300).all()
     assert report["coupon_simulation"]["groups_with_7_or_more_correct"] == int(
         (simulations["correct_of_10"] >= 7).sum()
