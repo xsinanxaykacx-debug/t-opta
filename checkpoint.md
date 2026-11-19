@@ -146,3 +146,12 @@
 - Added Wilson 95% confidence intervals for observed outcome frequencies in each probability bin and a sample-weighted calibration summary per outcome/partition. Summary includes weighted absolute/signed calibration error and a maximum absolute bin error restricted to bins with at least 30 matches, to reduce small-bin overinterpretation.
 - Added tests for confidence-interval containment, summary coverage, and match accounting. Awaiting CI on these new commits; no new results are claimed until CI and the regenerated artifact succeed.
 - The odds timestamp limitation remains: pre-kickoff capture cannot be independently verified. No ROI/edge claim; no holdout scoring; PR #5 remains draft/open; main and legacy `BOT.py` untouched.
+
+
+## Favorite probability-band uncertainty — 2026-11-19
+- Latest CI on commit `5dc5f6dce6e6b7b7b6f1fbdf9adcbf217c454d0d` passed all three workflows (six jobs total); the full test suite and both real-data analysis steps completed successfully.
+- Inspected artifact `14516180942` from run `44497751703`. 1X2 validation: 2,112 matches, favorite hit rate 52.75%. Favorite probability bands: 50–60% n=484, 56.41%; 60–70% n=247, 72.06%; 70–80% n=131, 78.63%; 80–100% n=41, 87.80%. These are descriptive validation results, not evidence of positive betting ROI.
+- The Over/Under directional model's 1.60–2.50 validation slice had 1,419 bets, 53.77% hit rate, and -7.05% ROI. EV-filtered selections produced no bets. This candidate is not profitable on the current validation sample.
+- Added Wilson 95% confidence intervals to each favorite-probability band, plus the observed-minus-mean-market-confidence gap and its interval, and favorite win counts. Added tests checking interval containment and gap arithmetic.
+- The new report makes uncertainty explicit; it does not use or score the sealed 2,124-match holdout. Odds capture timestamps remain unavailable, so pre-kickoff availability is not independently verified.
+- PR #5 remains draft/open; do not merge, do not modify main or legacy `BOT.py`.
