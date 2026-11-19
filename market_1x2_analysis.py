@@ -240,8 +240,12 @@ def _outcome_calibration_rows(data: pd.DataFrame, partition: str) -> list[dict]:
 def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, simulations: int = 50,
                         group_size: int = 10, legs_per_coupon: int = 3,
                         stake_per_coupon: float = 100.0, seed: int = 20261119) -> dict:
-    """Run 50 reproducible 10-match group simulations on validation favorites >=60%."""
-    candidates = validation.loc[validation["favorite_probability"] >= 0.60].copy()
+    """Evaluate discovery-selected 71-90.99% favorite bands on validation only."""
+    # Discovery selected 71-80.99% and 81-90.99%; exclude weak 60-70 and sparse 91+.
+    candidates = validation.loc[
+        (validation["favorite_probability"] >= 0.71)
+        & (validation["favorite_probability"] < 0.91)
+    ].copy()
     candidates = candidates.sort_values("Date").reset_index(drop=True)
     columns = ["simulation", "candidate_pool", "correct_of_10", "group_hit_rate",
                "coupon1_won", "coupon2_won", "coupon3_won", "winning_coupons",
@@ -298,7 +302,8 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, simulations:
         "mean_net_result": float(result["net_result"].mean()),
         "profitable_groups": int((result["net_result"] > 0).sum()),
         "break_even_or_better_groups": int((result["net_result"] >= 0).sum()),
-        "simulation_note": "50 reproducible groups sampled without replacement within each group from validation favorites with raw implied probability >=60%; groups may overlap between simulations. Three 3-leg coupons per group, 100 TL stake each; the 10th match is unused. Actual odds of the selected favorite are used. Historical simulation only, not a forecast.",
+        "candidate_band_policy": "Selected using discovery only: include 71.00%-90.99%; exclude 60.00%-70.99% as weaker and 91.00%-100.00% as too sparse in validation.",
+        "simulation_note": "50 independently drawn groups sampled without replacement within each group from validation favorites in the discovery-selected 71.00%-90.99% bands; groups may overlap between draws. Three 3-leg coupons per group, 100 TL stake each; the 10th match is unused. Actual odds of the selected favorite are used. Historical out-of-sample simulation only, not a forecast.",
     }
 
 
