@@ -120,3 +120,12 @@
 - The odds archive has no capture timestamps; the script explicitly reports that pre-kickoff availability cannot be independently verified. No claim of verified pre-match odds is allowed until provenance/timestamps are confirmed.
 - CI workflow now runs the 1X2 diagnostics and uploads both odds-only and 1X2 reports. Awaiting the new run on the updated branch before claiming tests or dataset analysis passed.
 - PR #5 remains draft/open; do not merge or modify main/BOT.py.
+
+
+## 1X2 analysis implementation refinement — 2026-11-19
+- 1X2 odds selection now falls back row-by-row in source priority order Avg -> BbAv -> B365, but each row always uses a complete H/D/A triplet from exactly one source. No cross-bookmaker mixing.
+- CSV is read with the same latin-1 encoding used by the existing odds-only pipeline.
+- Class diagnostics now include per-outcome predicted precision, actual-outcome recall, and F1 for Home, Draw, and Away; segment output includes league, season, and league-season slices for both discovery and validation.
+- The workflow was split into independent full-test and market-analysis jobs so a slow full test suite does not prevent the market report job from starting.
+- Latest implementation branch head before this checkpoint update: `7c4cc3cadae9bf14b1105e16684912e27840057a`. PR #5 remains draft/open and targets main; main and `BOT.py` remain untouched.
+- CI status at checkpoint time: the earlier combined workflow run `44462383373` was still in progress at the full pytest step; the latest split workflow jobs were queued. No 1X2 data report or test pass is claimed until the run on the final head completes.
