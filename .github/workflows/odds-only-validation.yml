@@ -5,8 +5,6 @@ concurrency:
 
 
 on:
-  push:
-    branches: ["feature/odds-only-high-odds-model"]
   pull_request:
     branches: ["main"]
   workflow_dispatch:
