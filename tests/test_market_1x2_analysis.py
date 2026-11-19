@@ -82,6 +82,14 @@ def test_outcome_calibration_reports_each_class_probability_separately(tmp_path)
     calibration = pd.read_csv(tmp_path / "market_1x2_outcome_calibration.csv")
     assert set(calibration["partition"]) == {"discovery", "validation"}
     assert set(calibration["outcome"]) == {"home", "draw", "away"}
-    assert {"mean_predicted_probability", "observed_frequency", "calibration_error"} <= set(calibration.columns)
+    assert {"mean_predicted_probability", "observed_frequency", "calibration_error",
+            "observed_frequency_ci95_lower", "observed_frequency_ci95_upper"} <= set(calibration.columns)
     assert calibration["matches"].sum() == 3 * (report["discovery"]["rows"] + report["validation"]["rows"])
     assert calibration["matches"].gt(0).all()
+    assert (calibration["observed_frequency_ci95_lower"] <= calibration["observed_frequency"]).all()
+    assert (calibration["observed_frequency"] <= calibration["observed_frequency_ci95_upper"]).all()
+    summary = pd.read_csv(tmp_path / "market_1x2_calibration_summary.csv")
+    assert len(summary) == 6
+    assert set(summary["outcome"]) == {"home", "draw", "away"}
+    assert summary["matches"].sum() == 3 * (report["discovery"]["rows"] + report["validation"]["rows"])
+    assert summary["weighted_absolute_calibration_error"].between(0, 1).all()
