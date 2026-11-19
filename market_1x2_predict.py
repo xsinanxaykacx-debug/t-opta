@@ -15,6 +15,8 @@ from market_1x2_analysis import (
 
 
 def _band_for_probability(probability: float) -> str:
+    if pd.isna(probability):
+        return "no_valid_odds"
     if probability < 0.60:
         return "below_60%"
     for label, lower, upper in zip(
