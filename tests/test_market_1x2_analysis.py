@@ -63,12 +63,11 @@ def test_build_reports_creates_market_only_reports_and_does_not_score_holdout(tm
     assert report["discovery"]["rows"] > report["validation"]["rows"]
     assert report["selected_odds_source"]["source_counts"]["Avg"] == 120
     assert report["method"].startswith("raw implied probabilities")
-    assert report["coupon_simulation"]["status"] == "completed"
-    assert report["coupon_simulation"]["simulation_count"] == 50
-    assert report["coupon_simulation"]["unique_fixture_groups"] <= 50
-    assert report["coupon_simulation"]["duplicate_fixture_group_draws"] == (
-        50 - report["coupon_simulation"]["unique_fixture_groups"]
-    )
+    assert report["coupon_simulation"]["status"] in {"completed", "limited_unique_groups"}
+    assert report["coupon_simulation"]["simulation_count"] <= 50
+    assert report["coupon_simulation"]["simulation_count"] == report["coupon_simulation"]["unique_fixture_groups"]
+    assert report["coupon_simulation"]["duplicate_fixture_group_draws"] == 0
+    assert report["coupon_simulation"]["simulation_count"] == report["coupon_simulation"]["total_possible_unique_groups"]
     assert report["coupon_simulation"]["eligible_match_dates"] >= 1
     assert report["selected_candidate_bands_from_discovery"]
     assert all(item["discovery_matches"] >= 50 and item["discovery_hit_rate"] >= 0.75
@@ -106,7 +105,7 @@ def test_build_reports_creates_market_only_reports_and_does_not_score_holdout(tm
         "60.00%-70.99%", "71.00%-80.99%", "81.00%-90.99%", "91.00%-100.00%"
     }
     simulations = pd.read_csv(tmp_path / "market_1x2_coupon_simulations.csv")
-    assert len(simulations) == 50
+    assert len(simulations) == report["coupon_simulation"]["simulation_count"]
     assert simulations["correct_of_10"].between(0, 10).all()
     assert simulations["match_date"].nunique() <= report["coupon_simulation"]["eligible_match_dates"]
     assert (simulations["candidate_pool"] >= 10).all()
@@ -152,3 +151,26 @@ def test_candidate_gate_is_independent_for_ms1_msx_and_ms2():
     assert selected[0]["favorite_type"] == "MS1"
     assert selected[0]["discovery_matches"] == 80
     assert selected[0]["discovery_hit_rate"] == pytest.approx(0.875)
+
+
+def test_coupon_simulation_does_not_repeat_the_only_possible_group(tmp_path):
+    validation = pd.DataFrame({
+        "Date": pd.to_datetime(["2025-01-01"] * 10, utc=True),
+        "favorite_probability": [0.75] * 10,
+        "market_favorite": [0] * 10,
+        "favorite_correct": [True] * 9 + [False],
+        "odds_home": [1.3] * 10,
+        "odds_draw": [4.0] * 10,
+        "odds_away": [5.0] * 10,
+    })
+    selected = [{"band": "71.00%-80.99%", "lower": 0.71, "upper": 0.81,
+                 "favorite_type": "MS1"}]
+    report = market._coupon_simulations(validation, tmp_path, selected, simulations=50)
+    assert report["status"] == "limited_unique_groups"
+    assert report["simulations_requested"] == 50
+    assert report["simulation_count"] == 1
+    assert report["total_possible_unique_groups"] == 1
+    assert report["unique_fixture_groups"] == 1
+    assert report["duplicate_fixture_group_draws"] == 0
+    output = pd.read_csv(tmp_path / "market_1x2_coupon_simulations.csv")
+    assert len(output) == 1
