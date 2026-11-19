@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+from itertools import combinations
 from pathlib import Path
 
 import numpy as np
@@ -268,7 +270,7 @@ def _select_candidate_bands(discovery: pd.DataFrame, minimum_matches: int = 50,
 def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_bands: list[dict], simulations: int = 50,
                         group_size: int = 10, legs_per_coupon: int = 3,
                         stake_per_coupon: float = 100.0, seed: int = 20261119) -> dict:
-    """Simulate real same-calendar-day groups using discovery-selected bands only."""
+    """Evaluate up to N unique same-calendar-day fixture groups, never repeat a group."""
     selected_mask = np.zeros(len(validation), dtype=bool)
     outcome_codes = {"MS1": 0, "MSX": 1, "MS2": 2}
     for band in selected_bands:
@@ -280,8 +282,7 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
             & (validation["favorite_probability"].to_numpy() < band["upper"])
             & (validation["market_favorite"].to_numpy() == outcome_code)
         )
-    candidates = validation.loc[selected_mask].copy()
-    candidates = candidates.sort_values("Date").reset_index(drop=True)
+    candidates = validation.loc[selected_mask].copy().sort_values("Date").reset_index(drop=True)
     columns = ["simulation", "match_date", "candidate_pool", "correct_of_10", "group_hit_rate",
                "coupon1_won", "coupon2_won", "coupon3_won", "winning_coupons",
                "total_return", "total_stake", "net_result", "any_coupon_won"]
@@ -294,29 +295,41 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
         pd.DataFrame(columns=columns).to_csv(output_dir / "market_1x2_coupon_simulations.csv", index=False)
         status = "no_discovery_band_passed" if not selected_bands else "no_same_day_group_of_10"
         return {
-            "status": status,
-            "candidate_matches": int(len(candidates)),
-            "eligible_match_dates": 0,
-            "minimum_matches_per_date": group_size,
-            "simulations_requested": simulations,
-            "unique_fixture_groups": 0,
-            "duplicate_fixture_group_draws": 0,
-            "distinct_fixtures_used": 0,
-            "selected_bands": selected_bands,
+            "status": status, "candidate_matches": int(len(candidates)),
+            "eligible_match_dates": 0, "minimum_matches_per_date": group_size,
+            "simulations_requested": simulations, "simulation_count": 0,
+            "unique_fixture_groups": 0, "duplicate_fixture_group_draws": 0,
+            "distinct_fixtures_used": 0, "selected_bands": selected_bands,
         }
 
+    total_possible_groups = sum(math.comb(len(day_group), group_size) for _, day_group in day_pools)
+    target_groups = min(simulations, total_possible_groups)
     rng = np.random.default_rng(seed)
+    selected_groups = []
+    if total_possible_groups <= simulations:
+        for day_index, (match_date, day_candidates) in enumerate(day_pools):
+            for indices in combinations(range(len(day_candidates)), group_size):
+                selected_groups.append((day_index, match_date, day_candidates, np.asarray(indices, dtype=int)))
+    else:
+        seen = set()
+        max_attempts = max(simulations * 100, 1000)
+        attempts = 0
+        while len(selected_groups) < target_groups and attempts < max_attempts:
+            attempts += 1
+            day_index = int(rng.integers(0, len(day_pools)))
+            match_date, day_candidates = day_pools[day_index]
+            indices = np.sort(rng.choice(len(day_candidates), size=group_size, replace=False))
+            key = (day_index, tuple(int(index) for index in indices))
+            if key in seen:
+                continue
+            seen.add(key)
+            selected_groups.append((day_index, match_date, day_candidates, indices))
+
     odds_columns = ("odds_home", "odds_draw", "odds_away")
     rows = []
-    fixture_group_keys = []
     fixtures_used = set()
-    for simulation in range(1, simulations + 1):
-        # Each simulated coupon day is selected first; all 10 fixtures must share that date.
-        day_index = int(rng.integers(0, len(day_pools)))
-        match_date, day_candidates = day_pools[day_index]
-        indices = rng.choice(len(day_candidates), size=group_size, replace=False)
-        fixture_group_keys.append((str(match_date), tuple(sorted(int(index) for index in indices))))
-        fixtures_used.update((str(match_date), int(index)) for index in indices)
+    for simulation, (day_index, match_date, day_candidates, indices) in enumerate(selected_groups, start=1):
+        fixtures_used.update((day_index, int(index)) for index in indices)
         group = day_candidates.iloc[indices].sort_values(
             "favorite_probability", ascending=False, kind="stable"
         ).reset_index(drop=True)
@@ -350,10 +363,14 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
         })
     result = pd.DataFrame(rows)
     result.to_csv(output_dir / "market_1x2_coupon_simulations.csv", index=False)
+    actual_count = len(result)
+    unique_groups = actual_count
     return {
-        "status": "completed", "simulation_count": simulations,
-        "unique_fixture_groups": len(set(fixture_group_keys)),
-        "duplicate_fixture_group_draws": simulations - len(set(fixture_group_keys)),
+        "status": "completed" if actual_count == simulations else "limited_unique_groups",
+        "simulation_count": actual_count, "simulations_requested": simulations,
+        "total_possible_unique_groups": int(total_possible_groups),
+        "unique_fixture_groups": unique_groups,
+        "duplicate_fixture_group_draws": 0,
         "distinct_fixtures_used": len(fixtures_used),
         "candidate_matches": int(len(candidates)),
         "eligible_match_dates": len(day_pools),
@@ -361,17 +378,17 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
         "selected_bands": selected_bands, "group_size": group_size,
         "coupons_per_group": 3, "legs_per_coupon": legs_per_coupon,
         "unused_match_per_group": group_size - 3 * legs_per_coupon,
-        "stake_per_coupon": stake_per_coupon, "stake_per_group": total_stake,
+        "stake_per_coupon": stake_per_coupon, "stake_per_group": 3.0 * stake_per_coupon,
         "groups_with_7_or_more_correct": int((result["correct_of_10"] >= 7).sum()),
         "groups_with_8_or_more_correct": int((result["correct_of_10"] >= 8).sum()),
         "groups_with_any_coupon_won": int(result["any_coupon_won"].sum()),
         "coupon_wins_total": int(result["winning_coupons"].sum()),
-        "mean_correct_of_10": float(result["correct_of_10"].mean()),
-        "mean_net_result": float(result["net_result"].mean()),
+        "mean_correct_of_10": float(result["correct_of_10"].mean()) if actual_count else float("nan"),
+        "mean_net_result": float(result["net_result"].mean()) if actual_count else float("nan"),
         "profitable_groups": int((result["net_result"] > 0).sum()),
         "break_even_or_better_groups": int((result["net_result"] >= 0).sum()),
         "candidate_band_policy": "Discovery-only gate applied independently to each probability-band and favorite-type pair: at least 50 matches and at least 75% favorite hit rate; only matching MS1/MSX/MS2 pairs are carried into validation and upcoming picks.",
-        "simulation_note": "Each draw contains 10 distinct validation fixtures from one date in discovery-selected band/type pairs. Groups may overlap; unique_fixture_groups and duplicate_fixture_group_draws expose repeated fixture sets. Fixtures are sorted by favorite probability and interleaved into three 3-leg coupons exactly like the upcoming picker; the 10th match is unused. Actual odds of the selected favorite are used. Historical out-of-sample simulation only, not a forecast.",
+        "simulation_note": "Only unique combinations of 10 validation fixtures from a single date are evaluated. If fewer than requested exist, all possible unique groups are reported and no duplicate resampling is used. This is historical validation, not a forecast.",
     }
 
 def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
