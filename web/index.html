@@ -13,7 +13,11 @@
     .match{border:1px solid #263449;background:#080e1a;border-radius:13px;padding:14px}
     .eligible{border-color:rgba(16,185,129,.55)}
     .featured-panel{border:1px solid rgba(249,115,22,.65);background:linear-gradient(145deg,rgba(124,45,18,.24),rgba(15,23,42,.96) 58%);border-radius:16px;padding:16px;margin-bottom:22px;box-shadow:0 10px 30px rgba(194,65,12,.08)}
-    .featured-pick{border:1px solid rgba(251,146,60,.34);background:rgba(9,14,25,.82);border-radius:12px;padding:13px}
+    .rank-panel{border-radius:16px;padding:16px;margin-bottom:18px}
+    .rank-green{border:1px solid rgba(34,197,94,.55);background:linear-gradient(145deg,rgba(20,83,45,.25),rgba(15,23,42,.96) 58%)}
+    .rank-orange{border:1px solid rgba(249,115,22,.58);background:linear-gradient(145deg,rgba(124,45,18,.25),rgba(15,23,42,.96) 58%)}
+    .rank-blue{border:1px solid rgba(59,130,246,.58);background:linear-gradient(145deg,rgba(30,58,138,.25),rgba(15,23,42,.96) 58%)}
+    .rank-pick{border:1px solid rgba(148,163,184,.2);background:rgba(9,14,25,.82);border-radius:12px;padding:13px}
   </style>
 </head>
 <body class="min-h-screen flex flex-col p-5 md:p-7">
@@ -43,15 +47,28 @@
         </div>
       </div>
 
-      <section id="eligiblePanel" class="featured-panel hidden" aria-live="polite">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div>
-            <div class="text-xs font-bold tracking-widest text-orange-300">GÜNÜN UYGUN SEÇİMLERİ</div>
-            <p class="text-xs text-orange-100/70 mt-1">Tarihsel seçim kriterlerini geçen maçlar</p>
+      <section id="rankedPanels" class="hidden" aria-live="polite">
+        <section class="rank-panel rank-green">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div><div class="text-xs font-bold tracking-widest text-green-300">YÜKSEK OLASILIK · %80–100</div><p class="text-xs text-green-100/70 mt-1">En yüksek MS1/MSX/MS2 olasılığı %80 ile %100 arasında</p></div>
+            <span id="firstBadge" class="rounded-full border border-green-400/50 bg-green-400/15 px-3 py-1 text-xs font-bold text-green-200">0 MAÇ</span>
           </div>
-          <span id="eligibleBadge" class="rounded-full border border-orange-400/50 bg-orange-400/15 px-3 py-1 text-xs font-bold text-orange-200">0 SEÇİM</span>
-        </div>
-        <div id="eligibleList" class="grid md:grid-cols-2 gap-3"></div>
+          <div id="firstList" class="grid md:grid-cols-2 gap-3"></div>
+        </section>
+        <section class="rank-panel rank-orange">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div><div class="text-xs font-bold tracking-widest text-orange-300">ORTA-YÜKSEK OLASILIK · %60–79,99</div><p class="text-xs text-orange-100/70 mt-1">En yüksek MS1/MSX/MS2 olasılığı %60 ile %79,99 arasında</p></div>
+            <span id="secondBadge" class="rounded-full border border-orange-400/50 bg-orange-400/15 px-3 py-1 text-xs font-bold text-orange-200">0 MAÇ</span>
+          </div>
+          <div id="secondList" class="grid md:grid-cols-2 gap-3"></div>
+        </section>
+        <section class="rank-panel rank-blue">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div><div class="text-xs font-bold tracking-widest text-blue-300">ORTA OLASILIK · %50–59,99</div><p class="text-xs text-blue-100/70 mt-1">En yüksek MS1/MSX/MS2 olasılığı %50 ile %59,99 arasında</p></div>
+            <span id="thirdBadge" class="rounded-full border border-blue-400/50 bg-blue-400/15 px-3 py-1 text-xs font-bold text-blue-200">0 MAÇ</span>
+          </div>
+          <div id="thirdList" class="grid md:grid-cols-2 gap-3"></div>
+        </section>
       </section>
 
       <div id="status" class="rounded-xl bg-slate-950 border border-slate-800 p-4 text-sm text-slate-300 mb-5">
@@ -79,32 +96,57 @@
 const $ = id => document.getElementById(id);
 const pct = n => '%' + Number(n).toFixed(2);
 function esc(value){return String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function renderEligiblePick(m){
+function renderRankedPick(item, rank){
+  const m=item.match, outcome=item.outcome, probability=item.probability;
+  const color=rank===1?'text-green-300':rank===2?'text-orange-300':'text-blue-300';
+  const border=rank===1?'border-green-300/20':rank===2?'border-orange-300/20':'border-blue-300/20';
+  const history=m.eligible
+    ? '<span class="text-[10px] text-green-300">Tarihsel seçim filtresini geçti</span>'
+    : '<span class="text-[10px] text-slate-400">Tarihsel seçim filtresini geçmedi</span>';
   return `
-  <article class="featured-pick">
+  <article class="rank-pick">
     <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-      <span class="text-xs text-orange-200/75">${esc(m.time)} · ${esc(m.league)}</span>
-      <span class="rounded-full bg-orange-400/15 border border-orange-300/40 px-2.5 py-1 text-[10px] font-bold text-orange-200">${esc(m.favorite)}</span>
+      <span class="text-xs text-slate-400">${esc(m.time)} · ${esc(m.league)}</span>
+      <span class="rounded-full border ${border} bg-slate-950/70 px-2.5 py-1 text-[10px] font-bold ${color}">${outcome}</span>
     </div>
     <div class="font-bold text-base leading-snug">${esc(m.home)} <span class="text-slate-500 font-normal">-</span> ${esc(m.away)}</div>
+    <div class="flex items-end justify-between gap-3 mt-3">
+      <div><div class="text-[10px] uppercase tracking-wider text-slate-400">Piyasa olasılığı</div><div class="text-2xl font-extrabold ${color} mt-0.5">${pct(probability)}</div></div>
+      <div class="text-right"><div class="text-[10px] text-slate-400">Seçenek oranı</div><div class="font-mono text-lg font-bold text-slate-100">${Number(m.odds[outcome==='MS1'?'1':outcome==='MSX'?'X':'2']).toFixed(2)}</div></div>
+    </div>
     <div class="grid grid-cols-3 gap-2 text-center mt-3">
-      ${[['1','MS1'],['X','MSX'],['2','MS2']].map(([key,label])=>`<div class="rounded-lg border border-orange-200/15 bg-slate-950/70 p-2"><div class="text-[10px] text-slate-400">${label}</div><div class="text-sm font-bold text-slate-100">${pct(m.probabilities_pct[key])}</div><div class="text-[10px] text-slate-500">Oran ${Number(m.odds[key]).toFixed(2)}</div></div>`).join('')}
+      ${[['1','MS1'],['X','MSX'],['2','MS2']].map(([key,label])=>`<div class="rounded-lg border border-slate-700/60 bg-slate-950/70 p-2"><div class="text-[10px] text-slate-400">${label}</div><div class="text-sm font-bold text-slate-100">${pct(m.probabilities_pct[key])}</div><div class="text-[10px] text-slate-500">Oran ${Number(m.odds[key]).toFixed(2)}</div></div>`).join('')}
     </div>
-    <div class="flex flex-wrap items-end justify-between gap-3 mt-3">
-      <div>
-        <div class="text-[10px] uppercase tracking-wider text-slate-400">Piyasa olasılığı</div>
-        <div class="text-2xl font-extrabold text-orange-300 mt-0.5">${pct(m.favorite_probability_pct)}</div>
-      </div>
-      <div class="text-right">
-        <div class="text-[10px] text-slate-400">MS oranı</div>
-        <div class="font-mono text-lg font-bold text-slate-100">${Number(m.odds[m.favorite === 'MS1' ? '1' : m.favorite === 'MSX' ? 'X' : '2']).toFixed(2)}</div>
-      </div>
-    </div>
-    <div class="flex items-center justify-between gap-2 mt-3 pt-2 border-t border-orange-200/10">
-      <span class="text-[10px] text-orange-100/65">${esc(m.probability_band)}</span>
-      ${m.match_url ? `<a class="text-xs text-orange-200 underline hover:text-white" target="_blank" rel="noreferrer" href="${esc(m.match_url)}">Maçkolik'te aç</a>` : ''}
+    <div class="flex flex-wrap items-center justify-between gap-2 mt-3 pt-2 border-t border-slate-700/50">
+      ${history}
+      ${m.match_url ? `<a class="text-xs text-slate-300 underline hover:text-white" target="_blank" rel="noreferrer" href="${esc(m.match_url)}">Maçkolik'te aç</a>` : ''}
     </div>
   </article>`;
+}
+function renderRankedPanels(matches){
+  // Her maçta yalnızca en yüksek 1X2 olasılığını seç; rengi olasılık bandı belirler.
+  const bands=[[],[],[]];
+  for(const match of matches){
+    const outcomes=[
+      {outcome:'MS1',probability:Number(match.probabilities_pct['1'])},
+      {outcome:'MSX',probability:Number(match.probabilities_pct.X)},
+      {outcome:'MS2',probability:Number(match.probabilities_pct['2'])}
+    ];
+    const favorite=outcomes.reduce((best,item)=>item.probability>best.probability?item:best);
+    const probability=favorite.probability;
+    const item={match,...favorite};
+    if(probability>=80 && probability<=100) bands[0].push(item);
+    else if(probability>=60 && probability<80) bands[1].push(item);
+    else if(probability>=50 && probability<60) bands[2].push(item);
+    // %50 altındaki maçlar üç olasılık kartına da alınmaz.
+  }
+  bands.forEach(list=>list.sort((a,b)=>b.probability-a.probability));
+  const ids=[['firstList','firstBadge'],['secondList','secondBadge'],['thirdList','thirdBadge']];
+  bands.forEach((list,index)=>{
+    $(ids[index][0]).innerHTML=list.map(item=>renderRankedPick(item,index+1)).join('');
+    $(ids[index][1]).textContent=list.length+' MAÇ';
+  });
+  $('rankedPanels').classList.remove('hidden');
 }
 function renderMatch(m){
   const cls = m.eligible ? 'match eligible' : 'match';
@@ -132,8 +174,10 @@ async function loadFixtures(){
   $('refreshBtn').textContent = 'Çekiliyor...';
   $('status').textContent = "Maçkolik'ten bugünün maçları ve MS1/MSX/MS2 oranları alınıyor...";
   $('leagueList').innerHTML = '';
-  $('eligiblePanel').classList.add('hidden');
-  $('eligibleList').innerHTML = '';
+  $('rankedPanels').classList.add('hidden');
+  $('firstList').innerHTML = '';
+  $('secondList').innerHTML = '';
+  $('thirdList').innerHTML = '';
   $('empty').classList.add('hidden');
   try{
     const response = await fetch('/api/fixtures/today',{cache:'no-store'});
@@ -147,12 +191,7 @@ async function loadFixtures(){
     $('updated').textContent = 'Son kontrol: ' + new Date().toLocaleString('tr-TR') + ' · Kaynak: Maçkolik';
     if(!data.matches.length){$('empty').classList.remove('hidden');return;}
 
-    const eligiblePicks = data.matches.filter(match => match.eligible);
-    if(eligiblePicks.length){
-      $('eligibleBadge').textContent = eligiblePicks.length + ' SEÇİM';
-      $('eligibleList').innerHTML = eligiblePicks.map(renderEligiblePick).join('');
-      $('eligiblePanel').classList.remove('hidden');
-    }
+    renderRankedPanels(data.matches);
 
     const files = [
       ['upcoming_market_picks.csv','Seçim listesini indir'],
