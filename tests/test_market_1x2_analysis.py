@@ -76,3 +76,12 @@ def test_result_label_is_derived_from_final_goals_not_features(tmp_path):
     frame["Away_xG"] = -np.arange(len(frame)) * 100
     report = market.build_reports(frame, tmp_path)
     assert report["result_label"].startswith("FTHG/FTAG used only")
+
+def test_outcome_calibration_reports_each_class_probability_separately(tmp_path):
+    report = market.build_reports(_frame(), tmp_path)
+    calibration = pd.read_csv(tmp_path / "market_1x2_outcome_calibration.csv")
+    assert set(calibration["partition"]) == {"discovery", "validation"}
+    assert set(calibration["outcome"]) == {"home", "draw", "away"}
+    assert {"mean_predicted_probability", "observed_frequency", "calibration_error"} <= set(calibration.columns)
+    assert calibration["matches"].sum() == 3 * (report["discovery"]["rows"] + report["validation"]["rows"])
+    assert calibration["matches"].gt(0).all()
