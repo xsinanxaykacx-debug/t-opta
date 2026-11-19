@@ -21,7 +21,7 @@ def _upcoming(n=10, same_day=False):
 def test_upcoming_picker_uses_raw_odds_and_builds_three_coupons(tmp_path):
     selected_bands = [{
         "band": "71.00%-80.99%", "lower": 0.71, "upper": 0.81,
-        "discovery_matches": 800, "discovery_hit_rate": 0.77,
+        "favorite_type": "MS1", "discovery_matches": 800, "discovery_hit_rate": 0.77,
     }]
     result = predict_upcoming(_upcoming(same_day=True), selected_bands, tmp_path)
     assert result["status"] == "ready"
@@ -50,7 +50,7 @@ def test_upcoming_picker_uses_raw_odds_and_builds_three_coupons(tmp_path):
 def test_upcoming_picker_refuses_to_make_incomplete_ten_match_coupons(tmp_path):
     selected_bands = [{
         "band": "71.00%-80.99%", "lower": 0.71, "upper": 0.81,
-        "discovery_matches": 800, "discovery_hit_rate": 0.77,
+        "favorite_type": "MS1", "discovery_matches": 800, "discovery_hit_rate": 0.77,
     }]
     result = predict_upcoming(_upcoming(7, same_day=True), selected_bands, tmp_path)
     assert result["status"] == "fewer_than_10_eligible_fixtures"
@@ -63,7 +63,7 @@ def test_upcoming_picker_refuses_to_make_incomplete_ten_match_coupons(tmp_path):
 def test_upcoming_picker_never_mixes_fixtures_from_different_dates(tmp_path):
     selected_bands = [{
         "band": "71.00%-80.99%", "lower": 0.71, "upper": 0.81,
-        "discovery_matches": 800, "discovery_hit_rate": 0.77,
+        "favorite_type": "MS1", "discovery_matches": 800, "discovery_hit_rate": 0.77,
     }]
     result = predict_upcoming(_upcoming(10, same_day=False), selected_bands, tmp_path)
     assert result["status"] == "no_same_day_group_of_10"
