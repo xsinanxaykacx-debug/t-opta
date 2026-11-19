@@ -33,16 +33,25 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
     market, source_info = market_probabilities(frame)
     data = pd.concat([frame.reset_index(drop=True), market.reset_index(drop=True)], axis=1)
     probability_matrix = data[["p_home", "p_draw", "p_away"]].to_numpy(float)
+    valid_mask = data["odds_valid"].to_numpy(dtype=bool)
     favorite_codes = np.argmax(probability_matrix, axis=1)
+    favorite_codes[~valid_mask] = -1
+    favorite_names = np.array(["MS1", "MSX", "MS2"])
     data["market_favorite_code"] = favorite_codes
-    data["market_favorite"] = np.take(np.array(["MS1", "MSX", "MS2"]), favorite_codes)
-    data["favorite_probability"] = np.max(probability_matrix, axis=1)
+    data["market_favorite"] = np.where(
+        valid_mask, favorite_names[np.maximum(favorite_codes, 0)], "NO_ODDS"
+    )
+    favorite_probability = np.full(len(data), np.nan, dtype=float)
+    favorite_probability[valid_mask] = np.max(probability_matrix[valid_mask], axis=1)
+    data["favorite_probability"] = favorite_probability
     data["favorite_probability_pct"] = data["favorite_probability"] * 100.0
     data["probability_band"] = data["favorite_probability"].map(_band_for_probability)
     selected_labels = {item["band"] for item in selected_bands}
     data["selected_for_coupon"] = data["probability_band"].isin(selected_labels)
     odds_matrix = data[["odds_home", "odds_draw", "odds_away"]].to_numpy(float)
-    data["favorite_odds"] = odds_matrix[np.arange(len(data)), favorite_codes]
+    favorite_odds = np.full(len(data), np.nan, dtype=float)
+    favorite_odds[valid_mask] = odds_matrix[np.arange(len(data))[valid_mask], favorite_codes[valid_mask]]
+    data["favorite_odds"] = favorite_odds
     data["selection_reason"] = np.where(
         data["selected_for_coupon"],
         "Band passed discovery sample/hit-rate gate",
