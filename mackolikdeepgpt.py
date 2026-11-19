@@ -121,7 +121,8 @@ EXCEL_KAYIT_ARALIGI = 500
 ISTATISTIK_ON_EK = "İSTATİSTİK | "
 MAKS_TUR = 3
 LOG_AKTIF = True
-MATCHDATA_AKTIF = True
+# Bu arşiv veri setinde kadro/olay ayrıntıları gerekmiyor.
+MATCHDATA_AKTIF = False
 
 # ═══ HTTP THROTTLE ═══
 ESZAMANLI_ISTEK = 2
@@ -163,16 +164,17 @@ ISTEK_HEADERS = {
     ),
 }
 
+# Excel/model veri seti: 8 maç bilgisi + 7 oran = 15 sütun.
+# Maç ID'si eşleştirme için checkpoint içinde tutulur, Excel'e yazılmaz.
 MAC_KOLONLARI = [
-    "Tarih", "Saat", "Lig/Sezon", "Ev Sahibi", "Deplasman", "Maç",
-    "İY Skor", "İY Skor Kaynağı", "Skor", "Maç Durumu", "Maç ID",
-    "İddaa Kodu", "Seyirci", "Stadyum", "Hakem", "TV Yayını",
-    "Ev Sahibi Teknik Direktör", "Deplasman Teknik Direktör",
-    "Ev Kadro", "Deplasman Kadro", "Ev Yedek", "Deplasman Yedek",
-    "Goller", "Sarı Kartlar", "Kırmızı Kartlar", "Değişiklikler",
-    "Kaçan Penaltılar",
-    "Maç Slug", "Kaynak URL", "Arşiv Sayfa Durumu",
-    "Oran Durumu", "İstatistik Durumu"
+    "Tarih", "Lig/Sezon", "Ev Sahibi", "Deplasman",
+    "İY Skor", "İY Sonucu", "Skor", "Maç Sonucu"
+]
+
+SABIT_ORAN_KOLONLARI = [
+    "MS 1", "MS X", "MS 2",
+    "2.5 Alt", "2.5 Üst",
+    "KG Var", "KG Yok"
 ]
 
 HATA_KOLONLARI = ["Tarih", "ID", "Maç", "Hata"]
@@ -428,7 +430,8 @@ def bahis_basligi(bahis_turu, secim):
 
 
 def oran_kolonu_ekle(oran_kolonlari, kolon):
-    if kolon and kolon not in MAC_KOLONLARI and kolon not in oran_kolonlari:
+    # Yalnızca hedeflenen 7 oran alanı saklanır.
+    if kolon in SABIT_ORAN_KOLONLARI and kolon not in oran_kolonlari:
         oran_kolonlari.append(kolon)
 
 
@@ -1276,6 +1279,15 @@ def _skor_duzenle(deger):
     return f"{int(match.group(1))}-{int(match.group(2))}"
 
 
+def _skor_sonucu(skor):
+    """Skoru 1/X/2 maç sonucu sınıfına dönüştürür."""
+    duzenli = _skor_duzenle(skor)
+    if not duzenli:
+        return ""
+    ev, dep = (int(x) for x in duzenli.split("-"))
+    return "1" if ev > dep else "2" if ev < dep else "X"
+
+
 def ilk_yari_skoru_scriptlerde_ara(soup):
     desenler = [
         ("htScore alanı", re.compile(
@@ -1310,84 +1322,49 @@ def ilk_yari_skoru_scriptlerde_ara(soup):
 
 
 def arsiv_mac_bilgisi_cikar(soup, row):
+    """Model için gereken temel maç bilgilerini çıkarır."""
     info = soup.select_one(".match-info-wrapper")
     if info is None:
         raise ValueError("Arşiv sayfasında .match-info-wrapper bulunamadı.")
+
     sonuc = {}
     lig = info.select_one(".match-info-wrapper-season a")
     sonuc["Lig/Sezon"] = metin_temizle(lig.get_text(" ", strip=True)) if lig else ""
+
     tarih_el = info.select_one(".match-info-date")
     tarih_metin = metin_temizle(tarih_el.get_text(" ", strip=True)) if tarih_el else ""
-    tarih_es = re.search(r"(\d{1,2}\.\d{1,2}\.\d{4})\s+(\d{1,2}:\d{2})", tarih_metin)
+    tarih_es = re.search(r"(\d{1,2}\.\d{1,2}\.\d{4})", tarih_metin)
     if tarih_es:
         try:
-            dt = datetime.strptime(
-                f"{tarih_es.group(1)} {tarih_es.group(2)}", "%d.%m.%Y %H:%M")
-            sonuc["Tarih"] = dt.strftime("%d-%m-%Y")
-            sonuc["Saat"] = dt.strftime("%H:%M")
+            sonuc["Tarih"] = datetime.strptime(
+                tarih_es.group(1), "%d.%m.%Y").strftime("%d-%m-%Y")
         except ValueError:
             sonuc["Tarih"] = metin_temizle(row.get("Tarih", ""))
-            sonuc["Saat"] = metin_temizle(row.get("Saat", ""))
     else:
         sonuc["Tarih"] = metin_temizle(row.get("Tarih", ""))
-        sonuc["Saat"] = metin_temizle(row.get("Saat", ""))
+
     ev_el = info.select_one("a.left-block-team-name")
     dep_el = info.select_one("a.r-left-block-team-name")
-    ev = (metin_temizle(ev_el.get_text(" ", strip=True))
-          if ev_el else metin_temizle(row.get("Ev Sahibi", "")))
-    dep = (metin_temizle(dep_el.get_text(" ", strip=True))
-           if dep_el else metin_temizle(row.get("Deplasman", "")))
-    sonuc["Ev Sahibi"] = ev
-    sonuc["Deplasman"] = dep
-    sonuc["Maç"] = f"{ev} vs {dep}" if ev and dep else metin_temizle(row.get("Maç", ""))
-    sonuc["Maç ID"] = str(row.get("Maç ID", ""))
-    sonuc["İddaa Kodu"] = str(row.get("İddaa Kodu", ""))
-    durum_el = info.select_one("#dvStatusText")
-    sonuc["Maç Durumu"] = metin_temizle(durum_el.get_text(" ", strip=True)) if durum_el else ""
+    sonuc["Ev Sahibi"] = (
+        metin_temizle(ev_el.get_text(" ", strip=True))
+        if ev_el else metin_temizle(row.get("Ev Sahibi", "")))
+    sonuc["Deplasman"] = (
+        metin_temizle(dep_el.get_text(" ", strip=True))
+        if dep_el else metin_temizle(row.get("Deplasman", "")))
+
     skor_el = info.select_one("#dvScoreText")
     skor = _skor_duzenle(skor_el.get_text(" ", strip=True)) if skor_el else ""
-    sonuc["Skor"] = skor or metin_temizle(row.get("Skor", ""))
+    sonuc["Skor"] = skor or _skor_duzenle(row.get("Skor", ""))
+
     iy_el = info.select_one("#dvHTScoreText")
     iy_skor = _skor_duzenle(iy_el.get_text(" ", strip=True)) if iy_el else ""
-    iy_kaynak = "Arşiv HTML #dvHTScoreText" if iy_skor else ""
     if not iy_skor:
-        iy_skor, js_kaynak = ilk_yari_skoru_scriptlerde_ara(soup)
-        if iy_skor:
-            iy_kaynak = js_kaynak
+        iy_skor, _ = ilk_yari_skoru_scriptlerde_ara(soup)
     if not iy_skor:
         iy_skor = _skor_duzenle(row.get("İY Skor", ""))
-        if iy_skor:
-            iy_kaynak = "Maç listesi ilk yarı skoru"
     sonuc["İY Skor"] = iy_skor
-    sonuc["İY Skor Kaynağı"] = iy_kaynak
-    seyirci_el = info.select_one(".left-block .hf-match-score")
-    seyirci_metin = metin_temizle(seyirci_el.get_text(" ", strip=True)) if seyirci_el else ""
-    seyirci_es = re.search(r"Seyirci\s*:\s*(.+)", seyirci_metin, flags=re.IGNORECASE)
-    sonuc["Seyirci"] = metin_temizle(seyirci_es.group(1)) if seyirci_es else ""
-    stadyum = info.select_one('.match-info-wrapper-bottom a[itemprop="location"]')
-    sonuc["Stadyum"] = metin_temizle(stadyum.get_text(" ", strip=True)) if stadyum else ""
-    hakem = info.select_one('.match-info-wrapper-bottom a[href*="/Hakem/"]')
-    sonuc["Hakem"] = metin_temizle(hakem.get_text(" ", strip=True)) if hakem else ""
-    ev_hoca = info.select_one(".left-block .coach a")
-    dep_hoca = info.select_one(".right-block .r-coach a")
-    sonuc["Ev Sahibi Teknik Direktör"] = (
-        metin_temizle(ev_hoca.get_text(" ", strip=True)) if ev_hoca else "")
-    sonuc["Deplasman Teknik Direktör"] = (
-        metin_temizle(dep_hoca.get_text(" ", strip=True)) if dep_hoca else "")
-    alt = info.select_one(".match-info-wrapper-bottom .match-info-detail-text")
-    if alt:
-        alt_kopya = BeautifulSoup(str(alt), "html.parser")
-        for node in alt_kopya.select("a, img, script, style"):
-            node.decompose()
-        tv = metin_temizle(alt_kopya.get_text(" ", strip=True))
-        tv = re.sub(r"^Tv Yayını\s*", "", tv, flags=re.IGNORECASE)
-        sonuc["TV Yayını"] = tv.strip(" ,;|")
-    else:
-        sonuc["TV Yayını"] = ""
-    sonuc["Maç Slug"] = ""
-
-    kadro_ve_olaylar = ana_html_den_kadro_ve_olaylar(soup)
-    sonuc.update(kadro_ve_olaylar)
+    sonuc["İY Sonucu"] = _skor_sonucu(iy_skor)
+    sonuc["Maç Sonucu"] = _skor_sonucu(sonuc["Skor"])
     return sonuc
 
 
@@ -1438,6 +1415,35 @@ def _oran_satiri_uygun_mu(bahis_turu, secim):
         return bool(secim_tokens.intersection({"var", "yok", "yes", "no", "evet", "hayir"}))
 
     return False
+
+
+def _oran_kolon_adi(bahis_turu, secim):
+    """Kaynak etiketlerini yedi sabit model sütununa eşler."""
+    cevir = str.maketrans({
+        "ı": "i", "İ": "i", "ğ": "g", "Ğ": "g",
+        "ü": "u", "Ü": "u", "ş": "s", "Ş": "s",
+        "ö": "o", "Ö": "o", "ç": "c", "Ç": "c",
+    })
+    market = re.sub(r"[^a-z0-9]+", " ",
+                    metin_temizle(bahis_turu).casefold().translate(cevir)).strip()
+    secim_norm = re.sub(r"[^a-z0-9]+", " ",
+                        metin_temizle(secim).casefold().translate(cevir)).strip()
+    secim_tokens = set(secim_norm.split())
+
+    if not _oran_satiri_uygun_mu(bahis_turu, secim):
+        return ""
+    if ("mac sonucu" in market or "match result" in market
+            or market in {"1x2", "ms", "sonuc"}):
+        return {"1": "MS 1", "x": "MS X", "2": "MS 2"}.get(secim_norm, "")
+    if secim_tokens.intersection({"alt", "under"}):
+        return "2.5 Alt"
+    if secim_tokens.intersection({"ust", "over"}):
+        return "2.5 Üst"
+    if secim_tokens.intersection({"var", "yes", "evet"}):
+        return "KG Var"
+    if secim_tokens.intersection({"yok", "no", "hayir"}):
+        return "KG Yok"
+    return ""
 
 
 def arsiv_sayfa_oranlari(soup):
@@ -1647,8 +1653,8 @@ async def get_bahis_oranlari_async(row):
 
     mac_bilgisi = arsiv_mac_bilgisi_cikar(soup, row)
     oranlar = arsiv_sayfa_oranlari(soup)
-    mac_id_ver = metin_temizle(row.get("Maç ID", ""))
-    istatistikler, ist_durum = await istatistikleri_cikar_async(soup, mac_id=mac_id_ver)
+    # İstatistik/AJAX ve kadro/olay verileri bu veri seti için çekilmez.
+    istatistikler, ist_durum = {}, "devre dışı"
 
     return {
         "mac_bilgisi": mac_bilgisi,
@@ -1763,8 +1769,7 @@ def hata_raporu_yaz(hatalar, dosya):
 
 
 def excel_ara_kaydet(genis_veri, oran_kolonlari, excel_dosya, hata_dosya, hatalar):
-    oranlar = [k for k in oran_kolonlari
-               if k not in MAC_KOLONLARI and not str(k).startswith(ISTATISTIK_ON_EK)]
+    oranlar = list(SABIT_ORAN_KOLONLARI)
     ist_kolonlari = []
     for bilgi in genis_veri.values():
         if not isinstance(bilgi, dict):
@@ -1773,7 +1778,17 @@ def excel_ara_kaydet(genis_veri, oran_kolonlari, excel_dosya, hata_dosya, hatala
             if str(kolon).startswith(ISTATISTIK_ON_EK) and kolon not in ist_kolonlari:
                 ist_kolonlari.append(kolon)
     tum_kolonlar = MAC_KOLONLARI + oranlar + ist_kolonlari
-    df_genis = pd.DataFrame(list(genis_veri.values())).reindex(columns=tum_kolonlar)
+    satirlar = []
+    for bilgi in genis_veri.values():
+        if not isinstance(bilgi, dict):
+            continue
+        kayit = dict(bilgi)
+        kayit["İY Skor"] = _skor_duzenle(kayit.get("İY Skor", ""))
+        kayit["Skor"] = _skor_duzenle(kayit.get("Skor", ""))
+        kayit["İY Sonucu"] = _skor_sonucu(kayit["İY Skor"])
+        kayit["Maç Sonucu"] = _skor_sonucu(kayit["Skor"])
+        satirlar.append(kayit)
+    df_genis = pd.DataFrame(satirlar).reindex(columns=tum_kolonlar)
 
     excel_ok = _excel_yaz_guvenli(df_genis, excel_dosya)
     hata_ok = hata_raporu_yaz(hatalar, hata_dosya)
@@ -2116,7 +2131,9 @@ async def _tek_mac_isle_async(row, tur, genis_veri, hatalar, oran_kolonlari):
             oran = oran_temizle(bahis.get("Oran", ""))
             if not oran:
                 continue
-            kolon = bahis_basligi(market, secim)
+            kolon = _oran_kolon_adi(market, secim)
+            if not kolon:
+                continue
             oran_kolonu_ekle(oran_kolonlari, kolon)
             gecerli_oranlar.append((kolon, oran))
 
