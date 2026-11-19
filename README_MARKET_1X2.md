@@ -36,8 +36,10 @@ python market_1x2_predict.py upcoming.csv --model-summary results_market_1x2/mar
 The picker:
 - Calculates the market favorite from raw 1/odds only.
 - Keeps only bands selected by the historical discovery gate.
-- Ranks eligible fixtures by raw implied probability and takes the top 10.
-- Distributes the top nine across three 3-leg coupons; the tenth pick is held aside.
+- Requires ten eligible fixtures from the same calendar date; fixtures from different dates are never mixed in one coupon group.
+- If multiple dates qualify, chooses the date whose ten strongest favorites have the highest mean raw implied probability.
+- Distributes the top nine from that date across three 3-leg coupons; the tenth pick is held aside.
+- If no date has ten eligible fixtures, it reports that no same-day coupon group is available and does not fabricate one.
 - Calculates each coupon's combined decimal odds and potential return at 100 TL per coupon.
 
 Outputs are `all_upcoming_market_favorites.csv`, `upcoming_market_picks.csv`, `upcoming_coupons.csv`, `upcoming_coupon_summary.csv`, and `upcoming_prediction_summary.json`.
