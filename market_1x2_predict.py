@@ -63,7 +63,7 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
     data["favorite_odds"] = favorite_odds
     data["selection_reason"] = np.where(
         data["selected_for_coupon"],
-        "Band passed discovery sample/hit-rate gate",
+        "Band passed discovery sample, hit-rate and confidence-bound gates",
         "Outside discovery-selected bands",
     )
 
