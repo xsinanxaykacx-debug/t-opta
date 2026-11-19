@@ -13,9 +13,44 @@ from market_1x2_predict import _band_for_probability, predict_upcoming
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
 SUMMARY_PATH = ROOT / "results_market_1x2" / "market_1x2_summary.json"
+HISTORICAL_TYPES_PATH = ROOT / "results_market_1x2" / "market_1x2_favorite_types.csv"
 OUTPUT_DIR = ROOT / "results_upcoming"
 
 app = Flask(__name__, static_folder=None)
+
+
+def _load_historical_performance():
+    if not HISTORICAL_TYPES_PATH.exists() or not SUMMARY_PATH.exists():
+        raise RuntimeError(
+            "Geçmiş kazanma/kaybetme analizi bulunamadı. Önce run_bot.bat ile tarihsel analizi çalıştırın."
+        )
+    summary = json.loads(SUMMARY_PATH.read_text(encoding="utf-8"))
+    frame = pd.read_csv(HISTORICAL_TYPES_PATH)
+    validation = frame.loc[frame["partition"] == "validation"]
+    stats = {}
+    for row in validation.to_dict(orient="records"):
+        count = int(row["matches"])
+        wins = int(row["wins"])
+        rate = row.get("hit_rate")
+        lower = row.get("hit_rate_ci95_lower")
+        upper = row.get("hit_rate_ci95_upper")
+        stats[(str(row["favorite_probability_band"]), str(row["favorite_type"]))] = {
+            "sample_size": count,
+            "wins": wins,
+            "losses": count - wins,
+            "hit_rate_pct": round(float(rate) * 100, 2) if pd.notna(rate) else None,
+            "ci95_lower_pct": round(float(lower) * 100, 2) if pd.notna(lower) else None,
+            "ci95_upper_pct": round(float(upper) * 100, 2) if pd.notna(upper) else None,
+            "partition": "chronological_validation",
+        }
+    validation_meta = summary.get("validation", {})
+    return stats, {
+        "matches": int(validation_meta.get("rows", 0)),
+        "start": validation_meta.get("start"),
+        "end": validation_meta.get("end"),
+        "odds_source": summary.get("selected_odds_source", {}).get("source_counts", {}),
+        "note": "Geçmiş oran arşivi ile Maçkolik canlı oranları farklı kaynaklardır; oran kaynağı aktarımı ayrıca izlenmelidir.",
+    }
 
 
 def _load_selected_bands():
@@ -29,6 +64,7 @@ def _load_selected_bands():
 
 def _analyze_rows(rows: list[dict]) -> dict:
     selected_bands = _load_selected_bands()
+    historical_stats, historical_meta = _load_historical_performance()
     if not rows:
         return {
             "status": "success",
@@ -63,6 +99,11 @@ def _analyze_rows(rows: list[dict]) -> dict:
         favorite_type = {"1": "MS1", "X": "MSX", "2": "MS2"}[favorite_key]
         favorite_probability = probabilities[favorite_key]
         band = _band_for_probability(favorite_probability)
+        historical_performance = historical_stats.get((band, favorite_type), {
+            "sample_size": 0, "wins": 0, "losses": 0,
+            "hit_rate_pct": None, "ci95_lower_pct": None, "ci95_upper_pct": None,
+            "partition": "chronological_validation",
+        })
         is_eligible = (band, favorite_type) in selected_pairs
         matches.append({
             "match_id": str(row.get("MatchId", "")),
@@ -80,6 +121,7 @@ def _analyze_rows(rows: list[dict]) -> dict:
             "favorite": favorite_type,
             "favorite_probability_pct": round(favorite_probability * 100, 2),
             "probability_band": band,
+            "historical_performance": historical_performance,
             "eligible": is_eligible,
             "selection_note": "Tarihsel keşif kriterlerini geçti" if is_eligible else "Tarihsel seçim kriterlerini geçmedi",
             "match_url": str(row.get("MatchURL", "")),
@@ -114,6 +156,8 @@ def _analyze_rows(rows: list[dict]) -> dict:
         "message": message,
         "source": "Maçkolik",
         "source_info": source_info,
+        "historical_validation": historical_meta,
+        "probability_method": "Marjdan arındırılmış 1X2 olasılığı: her 1/oran değeri üç sonucun 1/oran toplamına bölünür.",
         "leagues": [
             {"league_name": league, "matches": league_matches}
             for league, league_matches in sorted(league_map.items())
