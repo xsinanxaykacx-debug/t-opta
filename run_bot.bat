@@ -64,19 +64,25 @@ if not exist "results_market_1x2\market_1x2_summary.json" (
     )
 )
 
-if not exist "upcoming.csv" (
-    copy "upcoming_template.csv" "upcoming.csv" >nul
+echo.
+echo Mackolik'ten yaklasan maclar ve MS1-MS X-MS2 oranlari aliniyor...
+".venv\Scripts\python.exe" mackolik_provider.py --days 7 --out mackolik_upcoming.csv
+if errorlevel 2 (
     echo.
-    echo upcoming.csv olusturuldu.
-    echo Bu dosyayi Excel'de acip mac tarihi, takimlar ve AvgH AvgD AvgA oranlarini girin.
-    echo Ardindan run_bot.bat dosyasini tekrar calistirin.
+    echo Mackolik'te secilen 7 gun icin oranlari yayinlanmis mac bulunamadi.
     pause
     exit /b 0
 )
+if errorlevel 1 (
+    echo.
+    echo Mackolik verisi alinamadi. Baglantiyi veya Mackolik sayfasini kontrol edin.
+    pause
+    exit /b 1
+)
 
 echo.
-echo Maclar analiz ediliyor...
-".venv\Scripts\python.exe" market_1x2_predict.py upcoming.csv --model-summary results_market_1x2\market_1x2_summary.json --out results_upcoming
+echo Mackolik maclari analiz ediliyor...
+".venv\Scripts\python.exe" market_1x2_predict.py mackolik_upcoming.csv --model-summary results_market_1x2\market_1x2_summary.json --out results_upcoming
 if errorlevel 1 (
     echo Tahmin islemi basarisiz.
     pause
