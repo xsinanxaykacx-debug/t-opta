@@ -277,11 +277,26 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
                 & (part["favorite_probability"] < upper)
             ]
             stats = _summary(chosen)
+            favorite_count = int(len(chosen))
+            favorite_wins = int(chosen["favorite_correct"].sum()) if favorite_count else 0
+            favorite_rate = favorite_wins / favorite_count if favorite_count else np.nan
+            favorite_ci_lower, favorite_ci_upper = _wilson_interval(favorite_wins, favorite_count)
+            calibration_gap = favorite_rate - stats["mean_confidence"] if favorite_count else np.nan
             stats.update({
                 "partition": partition_name,
                 "favorite_probability_band": f"{lower:.0%}-{min(upper, 1.0):.0%}",
-                "favorite_hit_rate": float(chosen["favorite_correct"].mean()) if len(chosen) else np.nan,
-                "favorite_count": int(len(chosen)),
+                "favorite_hit_rate": favorite_rate,
+                "favorite_hit_rate_ci95_lower": favorite_ci_lower,
+                "favorite_hit_rate_ci95_upper": favorite_ci_upper,
+                "favorite_calibration_gap": calibration_gap,
+                "favorite_calibration_gap_ci95_lower": (
+                    favorite_ci_lower - stats["mean_confidence"] if favorite_count else np.nan
+                ),
+                "favorite_calibration_gap_ci95_upper": (
+                    favorite_ci_upper - stats["mean_confidence"] if favorite_count else np.nan
+                ),
+                "favorite_wins": favorite_wins,
+                "favorite_count": favorite_count,
             })
             bin_rows.append(stats)
     pd.DataFrame(bin_rows).to_csv(output_dir / "market_1x2_probability_bands.csv", index=False)
