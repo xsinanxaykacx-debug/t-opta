@@ -286,8 +286,9 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
         )
     candidates = validation.loc[selected_mask].copy().sort_values("Date").reset_index(drop=True)
     columns = ["simulation", "match_date", "candidate_pool", "correct_of_10", "group_hit_rate",
-               "coupon1_won", "coupon2_won", "coupon3_won", "winning_coupons",
-               "total_return", "total_stake", "net_result", "any_coupon_won"]
+               "coupon1_won", "coupon2_won", "coupon3_won", "coupon1_odds", "coupon2_odds",
+               "coupon3_odds", "winning_coupons", "total_return", "total_stake",
+               "net_result", "any_coupon_won"]
     day_pools = [
         (match_date, day_group.reset_index(drop=True))
         for match_date, day_group in candidates.groupby(candidates["Date"].dt.floor("D"), sort=True)
