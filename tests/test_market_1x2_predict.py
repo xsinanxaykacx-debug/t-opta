@@ -72,3 +72,16 @@ def test_upcoming_picker_never_mixes_fixtures_from_different_dates(tmp_path):
     assert result["coupon_count"] == 0
     picks = pd.read_csv(tmp_path / "upcoming_market_picks.csv")
     assert picks.empty
+
+
+def test_picker_does_not_borrow_other_outcome_types_to_fill_same_day_group(tmp_path):
+    selected_bands = [{
+        "band": "71.00%-80.99%", "lower": 0.71, "upper": 0.81,
+        "favorite_type": "MS1", "discovery_matches": 800, "discovery_hit_rate": 0.77,
+    }]
+    frame = _upcoming(same_day=True)
+    frame.loc[0, ["AvgH", "AvgD", "AvgA"]] = [4.0, 1.3, 5.0]
+    result = predict_upcoming(frame, selected_bands, tmp_path)
+    assert result["eligible_fixtures"] == 9
+    assert result["status"] == "fewer_than_10_eligible_fixtures"
+    assert result["coupon_count"] == 0
