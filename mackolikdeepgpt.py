@@ -85,7 +85,7 @@ def _lig_uygun_mu(yarisma):
         pass
 
     # Yeni gruplar ülke adına göre eşleşir; bilinmeyen lig ID'leri sorun olmaz.
-    ulke_adi = arsiv_slug_yap(yarisma[1]).casefold() if len(yarisma) > 1 else ""
+    ulke_adi = arsiv_slug_yap(yarisma[1]).casefold().replace("-", " ") if len(yarisma) > 1 else ""
     if not ulke_adi:
         return False
 
