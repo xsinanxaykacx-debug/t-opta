@@ -10,6 +10,7 @@ import pandas as pd
 
 from market_1x2_analysis import (
     PROBABILITY_BAND_LABELS,
+    PROBABILITY_BINS,
     market_probabilities,
 )
 
@@ -17,10 +18,8 @@ from market_1x2_analysis import (
 def _band_for_probability(probability: float) -> str:
     if pd.isna(probability):
         return "no_valid_odds"
-    if probability < 0.60:
-        return "below_60%"
     for label, lower, upper in zip(
-        PROBABILITY_BAND_LABELS, (0.60, 0.71, 0.81, 0.91), (0.71, 0.81, 0.91, 1.0000001)
+        PROBABILITY_BAND_LABELS, PROBABILITY_BINS[:-1], PROBABILITY_BINS[1:]
     ):
         if lower <= probability < upper:
             return label
@@ -87,7 +86,7 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
 
     selected_match_date = None
     if eligible_days:
-        # Prefer the date whose ten strongest market favorites have the highest mean raw probability.
+        # Prefer the date whose ten strongest market favorites have the highest mean de-vigged probability.
         selected_match_date, ranked = max(
             eligible_days,
             key=lambda item: float(item[1]["favorite_probability"].mean()),
@@ -182,7 +181,7 @@ def predict_upcoming(frame: pd.DataFrame, selected_bands: list[dict], output_dir
         "coupon_stake_total": 300.0 if coupon_summary else 0.0,
         "coupons": coupon_summary,
         "unused_tenth_pick": unused_pick,
-        "method": "Market favorite = highest raw 1/decimal-odds value; no de-vigging or normalization. Coupons use ten fixtures from one calendar date.",
+        "method": "Market favorite = highest de-vigged 1X2 probability; each 1/odds value is divided by the three-outcome inverse-odds sum. Historical hit rates are reported separately from chronological validation.",
         "warning": "Only enter odds captured before kickoff. This script does not independently verify odds timestamps or fixture status.",
     }
     (output_dir / "upcoming_prediction_summary.json").write_text(
