@@ -240,7 +240,8 @@ def _outcome_calibration_rows(data: pd.DataFrame, partition: str) -> list[dict]:
     return rows
 
 def _select_candidate_bands(discovery: pd.DataFrame, minimum_matches: int = 50,
-                            minimum_hit_rate: float = 0.75) -> list[dict]:
+                            minimum_hit_rate: float = 0.75,
+                            minimum_ci_lower: float = 0.75) -> list[dict]:
     """Select band + 1X2 outcome pairs independently on discovery only."""
     selected = []
     outcome_names = ("MS1", "MSX", "MS2")
@@ -255,7 +256,8 @@ def _select_candidate_bands(discovery: pd.DataFrame, minimum_matches: int = 50,
             wins = int(subset["favorite_correct"].sum()) if count else 0
             hit_rate = wins / count if count else float("nan")
             ci_lower, ci_upper = _wilson_interval(wins, count)
-            if count >= minimum_matches and hit_rate >= minimum_hit_rate:
+            if (count >= minimum_matches and hit_rate >= minimum_hit_rate
+                    and ci_lower >= minimum_ci_lower):
                 selected.append({
                     "band": label, "lower": float(lower), "upper": float(upper),
                     "favorite_type": outcome_name,
@@ -387,7 +389,7 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
         "mean_net_result": float(result["net_result"].mean()) if actual_count else float("nan"),
         "profitable_groups": int((result["net_result"] > 0).sum()),
         "break_even_or_better_groups": int((result["net_result"] >= 0).sum()),
-        "candidate_band_policy": "Discovery-only gate applied independently to each probability-band and favorite-type pair: at least 50 matches and at least 75% favorite hit rate; only matching MS1/MSX/MS2 pairs are carried into validation and upcoming picks.",
+        "candidate_band_policy": "Discovery-only gate applied independently to each probability-band and favorite-type pair: at least 50 matches, at least 75% favorite hit rate, and Wilson 95% confidence-interval lower bound at least 75%; only matching MS1/MSX/MS2 pairs are carried into validation and upcoming picks.",
         "simulation_note": "Only unique combinations of 10 validation fixtures from a single date are evaluated. If fewer than requested exist, all possible unique groups are reported and no duplicate resampling is used. This is historical validation, not a forecast.",
     }
 
