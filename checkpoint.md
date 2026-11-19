@@ -155,3 +155,16 @@
 - Added Wilson 95% confidence intervals to each favorite-probability band, plus the observed-minus-mean-market-confidence gap and its interval, and favorite win counts. Added tests checking interval containment and gap arithmetic.
 - The new report makes uncertainty explicit; it does not use or score the sealed 2,124-match holdout. Odds capture timestamps remain unavailable, so pre-kickoff availability is not independently verified.
 - PR #5 remains draft/open; do not merge, do not modify main or legacy `BOT.py`.
+
+## Raw 1X2 favorite bands and coupon validation — 2026-11-19
+- Replaced the previous de-vigged 1X2 probabilities with the user's requested raw implied probabilities: each outcome is exactly `1 / decimal_odds`; no normalization and no margin removal is applied. The three raw percentages may sum above 100%.
+- Complete triplet source priority remains Avg -> BbAv -> B365, row-by-row, without mixing bookmakers.
+- Favorite probability bands are now exactly 60.00–70.99%, 71.00–80.99%, 81.00–90.99%, and 91.00–100.00%. Reports include sample count, wins, hit rate, Wilson 95% interval, and favorite type (MS1/MSX/MS2) split within each band.
+- Discovery and validation remain chronological (whole UTC dates); the final 15% / 2,124-match holdout is still sealed and unscored.
+- The first real-data run of the raw-probability implementation completed its market-analysis job and produced 14,169 complete Avg H/D/A triplets: discovery 9,933 and validation 2,112. Validation overall favorite hit rate was 52.75% (not a 65%+ overall system).
+- Preliminary raw-band validation results from that run: 60.00–70.99%: 202/310 = 65.16%; 71.00–80.99%: 122/159 = 76.73%; 81.00–90.99%: 64/71 = 90.14%; 91.00–100.00%: 7/9 = 77.78%. The final band has only 9 matches and is not reliable evidence; its Wilson interval is wide. The strongest candidate bands were selected from discovery for the coupon evaluation: 71.00–90.99%.
+- Added 50 reproducible 10-match validation simulations. Each group is split into three 3-leg coupons (one match unused), 100 TL stake per coupon, actual historical odds of each selected favorite used for payout. Current code restricts the candidate pool to the discovery-selected 71.00–90.99% bands; the updated artifact for this stricter policy is still pending.
+- Added output `market_1x2_favorite_types.csv` and `market_1x2_coupon_simulations.csv`; `market_1x2_probability_bands.csv` now contains the four requested raw bands.
+- The earlier broad >=60% exploratory simulation (not the final candidate policy) yielded 7.22/10 mean hits, 37/50 groups with >=7 hits, 24/50 with >=8, and at least one coupon hit in 39/50; this is not to be used as the final coupon result because the selection policy was subsequently tightened to 71.00–90.99%.
+- Latest code commit at checkpoint: `779554734579e7b37c2ff127bbb7a25bcd48e449`. GitHub Actions for the latest head are queued; complete pytest and the stricter-band coupon artifact are not yet confirmed green.
+- Odds capture timestamps are absent; pre-kickoff capture cannot be independently verified. No holdout scoring, no claim of guaranteed 7–8/10, no PR merge, and no changes to main or legacy `BOT.py`.
