@@ -5,7 +5,7 @@ concurrency:
 
 on:
   push:
-  pull_request:
+    branches: ["main"]
 jobs:
   pytest:
     runs-on: ubuntu-latest
