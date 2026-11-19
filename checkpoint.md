@@ -129,3 +129,11 @@
 - The workflow was split into independent full-test and market-analysis jobs so a slow full test suite does not prevent the market report job from starting.
 - Latest implementation branch head before this checkpoint update: `7c4cc3cadae9bf14b1105e16684912e27840057a`. PR #5 remains draft/open and targets main; main and `BOT.py` remain untouched.
 - CI status at checkpoint time: the earlier combined workflow run `44462383373` was still in progress at the full pytest step; the latest split workflow jobs were queued. No 1X2 data report or test pass is claimed until the run on the final head completes.
+
+## 1X2 outcome probability calibration — 2026-11-19
+- Added `market_1x2_outcome_calibration.csv` to report the calibration of Home, Draw, and Away probabilities separately, rather than evaluating only the most-likely market favorite.
+- For each outcome, discovery and validation now report 10 probability bands (0–10% through 90–100%), sample count, mean predicted probability, observed outcome frequency, calibration error, and one-vs-rest Brier score.
+- The analysis remains strictly chronological; the final 15% holdout remains sealed and is not included in calibration.
+- Added a unit test checking all three outcomes and both development partitions are represented and that every match contributes exactly one bin per outcome.
+- Workflow artifact upload already includes the entire `results_market_1x2/` directory, so the new calibration CSV will be included automatically.
+- Implementation commits: `53100c3171488a561dddbecde4434f5af8728847` and `b54de289e8cb1356f72d65353f098fd8958de4fa`. Awaiting CI on the latest branch head; no calibration results are claimed until the new artifact is produced.
