@@ -56,9 +56,6 @@ def test_upcoming_picker_refuses_to_make_incomplete_ten_match_coupons(tmp_path):
     result = predict_upcoming(_upcoming(7, same_day=True), selected_bands, tmp_path)
     assert result["status"] == "fewer_than_10_eligible_fixtures"
     assert result["coupon_count"] == 0
-    assert result["picks_exported"] == 9
-    assert result["picks_in_group"] == 0
-    assert result["picks_in_group"] == 0
     assert result["eligible_fixtures"] == 7
     assert result["picks_exported"] == 7
     assert result["picks_in_group"] == 0
@@ -95,6 +92,10 @@ def test_picker_does_not_borrow_other_outcome_types_to_fill_same_day_group(tmp_p
     assert result["eligible_fixtures"] == 9
     assert result["status"] == "fewer_than_10_eligible_fixtures"
     assert result["coupon_count"] == 0
+    assert result["picks_exported"] == 9
+    assert result["picks_in_group"] == 0
+    picks = pd.read_csv(tmp_path / "upcoming_market_picks.csv")
+    assert len(picks) == 9
 
 
 def test_picker_exports_candidates_without_date_but_refuses_coupons(tmp_path):
