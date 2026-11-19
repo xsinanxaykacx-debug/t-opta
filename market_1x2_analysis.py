@@ -222,8 +222,8 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
         "sealed_holdout": {"rows": len(sealed), "start": str(sealed["Date"].min()), "end": str(sealed["Date"].max()), "metrics_not_computed": True},
         "favorite_hit_rate_discovery": float(discovery["favorite_correct"].mean()),
         "favorite_hit_rate_validation": float(validation["favorite_correct"].mean()),
-        "favorite_class_counts_validation": validation["market_favorite"].value_counts().sort_index().to_dict(),
-        "actual_class_counts_validation": validation["actual_code"].value_counts().sort_index().to_dict(),
+        "favorite_class_counts_validation": {name: int((validation["market_favorite"] == code).sum()) for code, name in enumerate(("home", "draw", "away"))},
+        "actual_class_counts_validation": {name: int((validation["actual_code"] == code).sum()) for code, name in enumerate(("home", "draw", "away"))},
     }
     (output_dir / "market_1x2_summary.json").write_text(
         json.dumps(overall, ensure_ascii=False, indent=2), encoding="utf-8"
