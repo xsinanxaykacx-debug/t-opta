@@ -89,7 +89,7 @@ def market_probabilities(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     result["odds_away"] = odds_selected[:, 2]
     result["odds_source"] = source_selected
     result["odds_valid"] = valid_all
-    source_counts = {str(source): int(np.sum(source_selected == source)) for source in SOURCE_GROUPS and [s[0] for s in SOURCE_GROUPS]}
+    source_counts = {source[0]: int(np.sum(source_selected == source[0])) for source in SOURCE_GROUPS}
     return result, {"source_counts": source_counts, "valid_matches": int(valid_all.sum()),
                     "source_columns": columns_by_source}
 
