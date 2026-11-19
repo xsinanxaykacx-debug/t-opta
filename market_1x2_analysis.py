@@ -326,7 +326,7 @@ def _coupon_simulations(validation: pd.DataFrame, output_dir: Path, selected_ban
         "profitable_groups": int((result["net_result"] > 0).sum()),
         "break_even_or_better_groups": int((result["net_result"] >= 0).sum()),
         "candidate_band_policy": "Discovery-only gate: include bands with at least 50 discovery matches and at least 75% favorite hit rate; evaluate those selected bands on validation.",
-        "simulation_note": "50 independently drawn groups sampled without replacement within each group from validation favorites in the discovery-selected 71.00%-90.99% bands; groups may overlap between draws. Three 3-leg coupons per group, 100 TL stake each; the 10th match is unused. Actual odds of the selected favorite are used. Historical out-of-sample simulation only, not a forecast.",
+        "simulation_note": "50 independently drawn groups sampled without replacement within each group from validation favorites in the discovery-selected probability bands; groups may overlap between draws. Three 3-leg coupons per group, 100 TL stake each; the 10th match is unused. Actual odds of the selected favorite are used. Historical out-of-sample simulation only, not a forecast.",
     }
 
 
