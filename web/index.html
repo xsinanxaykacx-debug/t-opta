@@ -57,14 +57,14 @@
       <section id="rankedPanels" class="hidden" aria-live="polite">
         <section class="rank-panel rank-green">
           <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div><div class="text-xs font-bold tracking-widest text-green-300">YÜKSEK OLASILIK · %80–100</div><p class="text-xs text-green-100/70 mt-1">En yüksek MS1/MSX/MS2 olasılığı %80 ile %100 arasında</p></div>
+            <div><div class="text-xs font-bold tracking-widest text-green-300">YÜKSEK OLASILIK · %71–100</div><p class="text-xs text-green-100/70 mt-1">En yüksek MS1/MSX/MS2 olasılığı %71 ile %100 arasında</p></div>
             <span id="firstBadge" class="rounded-full border border-green-400/50 bg-green-400/15 px-3 py-1 text-xs font-bold text-green-200">0 MAÇ</span>
           </div>
           <div id="firstList" class="grid md:grid-cols-2 gap-3"></div>
         </section>
         <section class="rank-panel rank-orange">
           <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div><div class="text-xs font-bold tracking-widest text-orange-300">ORTA-YÜKSEK OLASILIK · %60–79,99</div><p class="text-xs text-orange-100/70 mt-1">En yüksek MS1/MSX/MS2 olasılığı %60 ile %79,99 arasında</p></div>
+            <div><div class="text-xs font-bold tracking-widest text-orange-300">ORTA-YÜKSEK OLASILIK · %60–70,99</div><p class="text-xs text-orange-100/70 mt-1">En yüksek MS1/MSX/MS2 olasılığı %60 ile %70,99 arasında</p></div>
             <span id="secondBadge" class="rounded-full border border-orange-400/50 bg-orange-400/15 px-3 py-1 text-xs font-bold text-orange-200">0 MAÇ</span>
           </div>
           <div id="secondList" class="grid md:grid-cols-2 gap-3"></div>
@@ -165,7 +165,7 @@ function renderRankedPanels(matches){
     const favorite=outcomes.reduce((best,item)=>item.probability>best.probability?item:best);
     const probability=favorite.probability;
     const item={match,...favorite};
-    if(probability>=80 && probability<=100) bands[0].push(item);
+    if(probability>=71 && probability<=100) bands[0].push(item);
     else if(probability>=60 && probability<80) bands[1].push(item);
     else if(probability>=50 && probability<60) bands[2].push(item);
     // %50 altındaki maçlar üç olasılık kartına da alınmaz.
@@ -180,7 +180,7 @@ function renderRankedPanels(matches){
 }
 function bandLabel(probability){
   const value=Number(probability);
-  if(value>=80 && value<=100) return 'YEŞİL BANT';
+  if(value>=71 && value<=100) return 'YEŞİL BANT';
   if(value>=60 && value<80) return 'TURUNCU BANT';
   if(value>=50 && value<60) return 'MAVİ BANT';
   return '%50 ALTI';
