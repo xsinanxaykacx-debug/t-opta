@@ -128,7 +128,7 @@ def _summary(group: pd.DataFrame) -> dict:
     n = len(group)
     if not n:
         return {"matches": 0, "accuracy": np.nan, "mean_confidence": np.nan,
-                "mean_margin": np.nan, "brier_multiclass": np.nan}
+                "mean_margin": np.nan, "raw_multiclass_squared_error": np.nan}
     p = group[["p_home", "p_draw", "p_away"]].to_numpy(float)
     actual = group["actual_code"].to_numpy(int)
     predicted = np.argmax(p, axis=1)
