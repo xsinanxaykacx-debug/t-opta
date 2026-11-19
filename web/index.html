@@ -99,16 +99,23 @@ const $ = id => document.getElementById(id);
 const pct = n => '%' + Number(n).toFixed(2);
 function esc(value){return String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function historicalText(m){
-  const h=m.historical_performance || {};
-  if(!Number(h.sample_size)) return 'Geçmiş örnek: yok';
-  return `Geçmiş: ${h.wins}/${h.sample_size} kazandı · ${h.losses} kayıp · ${pct(h.hit_rate_pct)}`;
+  const h=m.historical_performance || {}, v=h.validation || h, d=h.discovery || {};
+  const validation = Number(v.sample_size) ? `Doğrulama ${v.wins}/${v.sample_size} · ${pct(v.hit_rate_pct)}` : 'Doğrulama örneği yok';
+  const discovery = Number(d.sample_size) ? `Keşif ${d.wins}/${d.sample_size} · ${pct(d.hit_rate_pct)}` : 'Keşif örneği yok';
+  return `${validation} · ${discovery}`;
 }
 function renderHistoricalPerformance(m){
-  const h=m.historical_performance || {};
-  if(!Number(h.sample_size)) return `<div class="mt-3 rounded-lg border border-slate-700/60 bg-slate-950/60 px-3 py-2 text-xs text-slate-400">Bu sonuç ve olasılık aralığı için doğrulama örneği yok.</div>`;
-  const interval = h.ci95_lower_pct == null || h.ci95_upper_pct == null
-    ? '' : `<span class="text-[10px] text-slate-500"> · %95 aralık ${pct(h.ci95_lower_pct)}–${pct(h.ci95_upper_pct)}</span>`;
-  return `<div class="mt-3 rounded-lg border border-slate-700/60 bg-slate-950/60 px-3 py-2"><div class="text-[10px] uppercase tracking-wider text-slate-400">Geçmiş gerçekleşen sonuç · ${esc(m.probability_band)}</div><div class="mt-1 text-sm font-bold text-slate-100">${h.wins}/${h.sample_size} kazandı · ${h.losses} kayıp · <span class="text-emerald-300">${pct(h.hit_rate_pct)}</span></div>${interval}</div>`;
+  const h=m.historical_performance || {}, v=h.validation || h, d=h.discovery || {};
+  if(!Number(v.sample_size) && !Number(d.sample_size)) return `<div class="mt-3 rounded-lg border border-slate-700/60 bg-slate-950/60 px-3 py-2 text-xs text-slate-400">Bu sonuç ve olasılık aralığı için tarihsel örnek yok.</div>`;
+  const validation = Number(v.sample_size)
+    ? `<div class="mt-1 text-sm font-bold text-slate-100">${v.wins}/${v.sample_size} kazandı · ${v.losses} kayıp · <span class="text-emerald-300">${pct(v.hit_rate_pct)}</span></div>`
+    : `<div class="mt-1 text-xs text-slate-400">Bağımsız doğrulamada örnek yok.</div>`;
+  const discovery = Number(d.sample_size)
+    ? `<div class="mt-1 text-[11px] text-slate-400">Keşif verisi: ${d.wins}/${d.sample_size} kazandı · ${d.losses} kayıp · ${pct(d.hit_rate_pct)}</div>`
+    : '';
+  const interval = v.ci95_lower_pct == null || v.ci95_upper_pct == null
+    ? '' : `<span class="text-[10px] text-slate-500"> · %95 aralık ${pct(v.ci95_lower_pct)}–${pct(v.ci95_upper_pct)}</span>`;
+  return `<div class="mt-3 rounded-lg border border-slate-700/60 bg-slate-950/60 px-3 py-2"><div class="text-[10px] uppercase tracking-wider text-slate-400">Gerçek geçmiş sonuç · ${esc(m.probability_band)}</div>${validation}${interval}${discovery}</div>`;
 }
 function renderRankedPick(item, rank){
   const m=item.match, outcome=item.outcome, probability=item.probability;
