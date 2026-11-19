@@ -74,6 +74,7 @@ def _analyze_rows(rows: list[dict]) -> dict:
             "eligible_picks": 0,
             "coupon_ready": False,
             "message": "Maçkolik'te bugün oranı alınabilen maç bulunamadı.",
+            "historical_validation": historical_meta,
             "leagues": [],
             "matches": [],
         }
