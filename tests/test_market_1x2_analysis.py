@@ -61,7 +61,7 @@ def test_build_reports_creates_market_only_reports_and_does_not_score_holdout(tm
     assert report["sealed_holdout"]["metrics_not_computed"] is True
     assert report["odds_timestamp_limitation"]
     segments = pd.read_csv(tmp_path / "market_1x2_segments.csv")
-    assert {"discovery_overall", "validation_overall", "validation_league_season"} <= set(segments["scope"])
+    assert {"discovery_overall", "validation_overall", "validation_league_season"} <= set(segments["scope"])\n    assert "draw_actual_recall" in segments.columns\n    assert "away_f1" in segments.columns
     bands = pd.read_csv(tmp_path / "market_1x2_probability_bands.csv")
     assert set(bands["partition"]) == {"discovery", "validation"}
     assert (tmp_path / "market_1x2_summary.json").exists()
