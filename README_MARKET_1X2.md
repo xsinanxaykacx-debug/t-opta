@@ -8,11 +8,11 @@ Run:
 python market_1x2_analysis.py xgo.csv --out results_market_1x2
 ```
 
-The historical analysis reads one complete H/D/A odds triplet per match (Avg first, then BbAv, then B365). Each raw implied probability is `1 / decimal odds`; probabilities are not normalized and bookmaker margin is not removed. Final goals are used only to label the actual result.
+The historical analysis reads one complete H/D/A odds triplet per match (Avg first, then BbAv, then B365). It calculates raw implied values as `1 / decimal odds`, retains the bookmaker margin as a diagnostic, and removes that margin for the displayed market probabilities by dividing each outcome's raw value by the sum of all three raw values. Final goals are used only to label the actual result.
 
-The report is chronological: 70% discovery, 15% validation, final 15% sealed and unscored. It writes:
-- `market_1x2_probability_bands.csv`: 60.00–70.99%, 71.00–80.99%, 81.00–90.99%, 91.00–100.00%.
-- `market_1x2_favorite_types.csv`: MS1/MSX/MS2 accuracy within each band.
+The report is chronological: 70% discovery, 15% validation, final 15% sealed and unscored. The dashboard uses the separate validation partition to show empirical wins, losses, sample size, hit rate and a 95% Wilson interval for the same probability band and favorite type (MS1/MSX/MS2). It writes:
+- `market_1x2_probability_bands.csv`: 0.00–49.99%, 50.00–59.99%, 60.00–70.99%, 71.00–80.99%, 81.00–90.99%, 91.00–100.00%.
+- `market_1x2_favorite_types.csv`: MS1/MSX/MS2 wins, losses, sample size and observed hit rate within each band.
 - `market_1x2_segments.csv`: league, season and league-season splits.
 - `market_1x2_outcome_calibration.csv` and `market_1x2_calibration_summary.csv`.
 - `market_1x2_coupon_simulations.csv`: validation group simulations using unique same-day fixture combinations only.
@@ -36,8 +36,9 @@ The website:
 1. Reads today's football fixtures directly from Maçkolik's public livescores JSON feed.
 2. Resolves competition names from Maçkolik's competition catalogue.
 3. Opens each pre-match fixture's Maçkolik İddaa detail page and reads the first/current **Maç Sonucu** 1-X-2 price row.
-4. Calculates raw implied probabilities as `1 / odds`; it does not normalize probabilities or remove the margin.
-5. Applies the existing discovery-selected band + favorite-type gates and displays every fetched match, including those outside the selection criteria.
+4. Calculates the three raw implied values as `1 / odds`, then removes the 1X2 overround for displayed probabilities so MS1+MSX+MS2 total 100%.
+5. Looks up the matching historical validation record by normalized probability band and favorite type, showing actual wins, losses, sample size and hit rate separately from the probability.
+6. Applies the existing discovery-selected band + favorite-type gates and displays every fetched match, including those outside the selection criteria.
 6. If fewer than ten qualifying matches exist, it displays and exports all qualifying picks and explicitly reports the count (for example, "10 uygun maç yok; 6 uygun seçim bulundu"). It does not invent filler matches.
 7. When ten qualifying fixtures exist on the same calendar day, it creates the existing three 3-leg coupon groups.
 
@@ -49,4 +50,4 @@ The provider uses Maçkolik's currently exposed public web feed and match-page m
 
 ## Important limitations
 
-Historical validation used the odds source stored in the historical archive, not Maçkolik. Therefore historical hit rates are not proof that the same rates transfer to Maçkolik. Track the Maçkolik picks prospectively before making any success-rate claim. No prediction or coupon is guaranteed.
+Historical validation uses the odds source stored in the historical archive (Avg), not Maçkolik. Therefore historical hit rates are evidence about the archived market, not proof that the same rates transfer to Maçkolik. The dashboard labels this source/period and reports validation wins/losses separately. Track Maçkolik picks prospectively before making any source-specific success-rate claim. No prediction or coupon is guaranteed.
