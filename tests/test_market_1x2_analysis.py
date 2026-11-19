@@ -143,9 +143,9 @@ def test_outcome_calibration_reports_each_class_probability_separately(tmp_path)
 
 def test_candidate_gate_is_independent_for_ms1_msx_and_ms2():
     discovery = pd.DataFrame({
-        "favorite_probability": [0.75] * 100,
-        "market_favorite": [0] * 80 + [1] * 20,
-        "favorite_correct": [True] * 70 + [False] * 10 + [True] * 10 + [False] * 10,
+        "favorite_probability": [0.75] * 160,
+        "market_favorite": [0] * 80 + [1] * 80,
+        "favorite_correct": [True] * 70 + [False] * 10 + [True] * 40 + [False] * 40,
     })
     selected = market._select_candidate_bands(discovery, minimum_matches=50, minimum_hit_rate=0.75)
     assert len(selected) == 1
