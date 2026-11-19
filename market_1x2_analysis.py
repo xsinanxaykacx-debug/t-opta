@@ -138,7 +138,7 @@ def _summary(group: pd.DataFrame) -> dict:
         "accuracy": float(np.mean(predicted == actual)),
         "mean_confidence": float(np.mean(np.max(p, axis=1))),
         "mean_margin": float(group["market_margin"].mean()),
-        "brier_multiclass": float(np.mean(np.sum((p - onehot) ** 2, axis=1))),
+        "raw_multiclass_squared_error": float(np.mean(np.sum((p - onehot) ** 2, axis=1))),
     }
 
 
@@ -391,7 +391,6 @@ def build_reports(frame: pd.DataFrame, output_dir: Path) -> dict:
         "method": "raw implied probabilities: 1 / decimal odds per outcome; no normalization and no margin removal",
         "selected_odds_source": source_info,
         "odds_timestamp_limitation": "The archive does not provide odds capture timestamps; pre-kickoff availability is not independently verified.",
-        "result_label": "FTHG/FTAG used only to derive H/D/A outcome label; never used as a predictor.",
         "result_label": "FTHG/FTAG used only to derive H/D/A outcome label; never used as a predictor.",
         "discovery": {"rows": len(discovery), "start": str(discovery["Date"].min()), "end": str(discovery["Date"].max()), **_summary(discovery)},
         "validation": {"rows": len(validation), "start": str(validation["Date"].min()), "end": str(validation["Date"].max()), **_summary(validation)},
