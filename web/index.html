@@ -225,8 +225,9 @@ async function loadFixtures(){
     $('totalCount').textContent = data.fixtures_with_odds;
     const history = data.historical_validation || {};
     $('status').textContent = `${data.fixtures_found} maç bulundu, ${data.fixtures_with_odds} maçın oranı alındı. Kartlarda marjdan arındırılmış olasılık ve geçmişteki gerçek kazanma/kaybetme oranı birlikte gösteriliyor.`;
-    if(history.start && history.end) $('updated').textContent += ` · Geçmiş doğrulama: ${history.start.slice(0,10)} – ${history.end.slice(0,10)}`;
-    $('updated').textContent = 'Son kontrol: ' + new Date().toLocaleString('tr-TR') + ' · Kaynak: Maçkolik';
+    const archiveSource = Object.entries(history.odds_source || {}).map(([name,count])=>`${name}: ${Number(count).toLocaleString('tr-TR')}`).join(', ');
+    $('updated').textContent = 'Son kontrol: ' + new Date().toLocaleString('tr-TR') + ' · Canlı oran: Maçkolik';
+    if(history.start && history.end) $('updated').textContent += ` · Geçmiş doğrulama: ${history.start.slice(0,10)} – ${history.end.slice(0,10)} · Arşiv: ${archiveSource} (Maçkolik dışı)`;
     if(!data.matches.length){$('empty').classList.remove('hidden');return;}
 
     renderRankedPanels(data.matches);
