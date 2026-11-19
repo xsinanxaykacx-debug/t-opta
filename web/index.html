@@ -53,6 +53,7 @@
       </div>
 
       <div id="leagueList" class="space-y-6"></div>
+      <div id="downloadLinks" class="hidden mt-6 pt-5 border-t border-slate-800 flex flex-wrap gap-3"></div>
       <div id="empty" class="hidden text-center text-sm muted py-10">Gösterilecek maç bulunamadı.</div>
     </section>
 
@@ -103,6 +104,16 @@ async function loadFixtures(){
     $('status').textContent = data.message;
     $('updated').textContent = 'Son kontrol: ' + new Date().toLocaleString('tr-TR') + ' · Kaynak: Maçkolik';
     if(!data.matches.length){$('empty').classList.remove('hidden');return;}
+    const files = [
+      ['upcoming_market_picks.csv','Seçim listesini indir'],
+      ['all_upcoming_market_favorites.csv','Tüm maç analizini indir'],
+      ['upcoming_prediction_summary.json','Analiz raporunu indir']
+    ];
+    if(data.coupon_ready){
+      files.push(['upcoming_coupons.csv','Kupon ayaklarını indir'],['upcoming_coupon_summary.csv','Kupon özetini indir']);
+    }
+    $('downloadLinks').classList.remove('hidden');
+    $('downloadLinks').innerHTML = files.map(([file,label])=>`<a class="text-xs text-emerald-300 underline hover:text-white" href="/outputs/${file}">${label}</a>`).join('');
     $('leagueList').innerHTML = data.leagues.map(group=>`
       <section>
         <div class="flex items-center justify-between gap-2 mb-3"><h3 class="text-sm font-bold text-slate-200">${esc(group.league_name)}</h3><span class="text-xs muted">${group.matches.length} maç</span></div>
@@ -119,6 +130,7 @@ async function loadFixtures(){
 }
 $('refreshBtn').addEventListener('click',loadFixtures);
 loadFixtures();
+setInterval(loadFixtures, 5 * 60 * 1000);
 </script>
 </body>
 </html>
