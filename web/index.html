@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>T-OPTA v1 - TAHMİNKÂR</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body{background:#0b0f19;color:#f3f4f6;font-family:system-ui,-apple-system,sans-serif}
+    .panel{background:rgba(15,23,42,.86);border:1px solid #1e293b;border-radius:18px}
+    .muted{color:#94a3b8}
+    .pill{border:1px solid #334155;border-radius:999px;padding:4px 10px;font-size:11px}
+    .match{border:1px solid #263449;background:#080e1a;border-radius:13px;padding:14px}
+    .eligible{border-color:rgba(16,185,129,.55)}
+  </style>
+</head>
+<body class="min-h-screen flex flex-col p-5 md:p-7">
+  <header class="max-w-6xl mx-auto w-full flex items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <div class="w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div>
+      <h1 class="text-xl font-bold tracking-wider">T-OPTA <span class="text-xs bg-emerald-950 text-emerald-300 px-2 py-1 rounded">v1</span></h1>
+    </div>
+    <span class="pill text-slate-300">Şans Zorlayanın Yanındadır</span>
+  </header>
+
+  <main class="max-w-6xl mx-auto w-full my-8">
+    <div class="text-center mb-8">
+      <h2 class="text-4xl font-extrabold tracking-widest">TAHMİNKÂR</h2>
+      <p class="text-xs italic muted mt-3">Maçkolik verisi · Oran bazlı 1X2 piyasa analizi</p>
+    </div>
+
+    <section class="panel p-5 md:p-7">
+      <div class="flex flex-wrap justify-between items-center gap-3 mb-5">
+        <div>
+          <div class="text-xs font-semibold muted tracking-widest">GÜNÜN MAÇ FİKSTÜRÜ</div>
+          <div id="updated" class="text-xs muted mt-1">Maçkolik verisi bekleniyor...</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="matchCount" class="pill text-emerald-300">Yükleniyor</span>
+          <button id="refreshBtn" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 px-4 py-2 rounded-lg text-sm">Yenile</button>
+        </div>
+      </div>
+
+      <div id="status" class="rounded-xl bg-slate-950 border border-slate-800 p-4 text-sm text-slate-300 mb-5">
+        Maçkolik'ten fikstür ve MS1/MSX/MS2 oranları çekiliyor...
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><div class="text-[10px] muted uppercase">Oranı alınan maç</div><div id="totalCount" class="text-2xl font-bold mt-1">-</div></div>
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><div class="text-[10px] muted uppercase">Kriteri geçen</div><div id="eligibleCount" class="text-2xl font-bold text-emerald-400 mt-1">-</div></div>
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><div class="text-[10px] muted uppercase">Kupon grubu</div><div id="couponStatus" class="text-sm font-bold mt-2">-</div></div>
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><div class="text-[10px] muted uppercase">Veri kaynağı</div><div class="text-lg font-bold mt-1">Maçkolik</div></div>
+      </div>
+
+      <div id="leagueList" class="space-y-6"></div>
+      <div id="downloadLinks" class="hidden mt-6 pt-5 border-t border-slate-800 flex flex-wrap gap-3"></div>
+      <div id="empty" class="hidden text-center text-sm muted py-10">Gösterilecek maç bulunamadı.</div>
+    </section>
+
+    <p class="text-[11px] muted text-center mt-5">Olasılıklar ham 1/oran değerleridir; marj temizliği veya normalizasyon yapılmaz. Tahmin garantisi değildir.</p>
+  </main>
+
+  <footer class="text-center text-xs text-slate-600 mt-auto">T-OPTA v1 TAHMİNKÂR · OTOMATİK MAÇ ANALİZİ</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const pct = n => '%' + Number(n).toFixed(2);
+function esc(value){return String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function renderMatch(m){
+  const cls = m.eligible ? 'match eligible' : 'match';
+  const badge = m.eligible
+    ? '<span class="pill text-emerald-300 border-emerald-800">SEÇİM KRİTERİNİ GEÇTİ</span>'
+    : '<span class="pill text-slate-400">KRİTER DIŞI</span>';
+  return `
+  <article class="${cls}">
+    <div class="flex flex-wrap justify-between items-start gap-2 mb-3">
+      <div><div class="text-xs muted">${esc(m.time)} · ${esc(m.league)}</div><div class="font-bold mt-1">${esc(m.home)} <span class="muted font-normal">-</span> ${esc(m.away)}</div></div>
+      ${badge}
+    </div>
+    <div class="grid grid-cols-3 gap-2 text-center">
+      ${['1','X','2'].map((k,i)=>`<div class="bg-slate-950 rounded-lg p-2"><div class="text-[10px] muted">MS ${k}</div><div class="font-mono font-bold">${Number(m.odds[k]).toFixed(2)}</div><div class="text-xs text-slate-400 mt-1">${pct(m.probabilities_pct[k])}</div></div>`).join('')}
+    </div>
+    <div class="flex flex-wrap justify-between items-center gap-2 mt-3 text-xs">
+      <span class="text-emerald-300 font-semibold">${esc(m.favorite)} · ${pct(m.favorite_probability_pct)} · ${esc(m.probability_band)}</span>
+      <span class="muted">${esc(m.selection_note)}</span>
+    </div>
+    <div class="mt-2 text-[10px] muted flex justify-between gap-2"><span>Oran çekim: ${esc(m.odds_captured_at)}</span>${m.match_url ? `<a class="underline hover:text-white" target="_blank" rel="noreferrer" href="${esc(m.match_url)}">Maçkolik'te aç</a>` : ''}</div>
+  </article>`;
+}
+async function loadFixtures(){
+  $('refreshBtn').disabled = true;
+  $('refreshBtn').textContent = 'Çekiliyor...';
+  $('status').textContent = "Maçkolik'ten bugünün maçları ve MS1/MSX/MS2 oranları alınıyor...";
+  $('leagueList').innerHTML = '';
+  $('empty').classList.add('hidden');
+  try{
+    const response = await fetch('/api/fixtures/today',{cache:'no-store'});
+    const data = await response.json();
+    if(!response.ok || data.status !== 'success') throw new Error(data.message || 'Veri alınamadı');
+    $('matchCount').textContent = data.fixtures_found + ' maç';
+    $('totalCount').textContent = data.fixtures_with_odds;
+    $('eligibleCount').textContent = data.eligible_picks;
+    $('couponStatus').textContent = data.coupon_ready ? '10 maçlık grup hazır' : '10 maç yok';
+    $('status').textContent = data.message;
+    $('updated').textContent = 'Son kontrol: ' + new Date().toLocaleString('tr-TR') + ' · Kaynak: Maçkolik';
+    if(!data.matches.length){$('empty').classList.remove('hidden');return;}
+    const files = [
+      ['upcoming_market_picks.csv','Seçim listesini indir'],
+      ['all_upcoming_market_favorites.csv','Tüm maç analizini indir'],
+      ['upcoming_prediction_summary.json','Analiz raporunu indir']
+    ];
+    if(data.coupon_ready){
+      files.push(['upcoming_coupons.csv','Kupon ayaklarını indir'],['upcoming_coupon_summary.csv','Kupon özetini indir']);
+    }
+    $('downloadLinks').classList.remove('hidden');
+    $('downloadLinks').innerHTML = files.map(([file,label])=>`<a class="text-xs text-emerald-300 underline hover:text-white" href="/outputs/${file}">${label}</a>`).join('');
+    $('leagueList').innerHTML = data.leagues.map(group=>`
+      <section>
+        <div class="flex items-center justify-between gap-2 mb-3"><h3 class="text-sm font-bold text-slate-200">${esc(group.league_name)}</h3><span class="text-xs muted">${group.matches.length} maç</span></div>
+        <div class="grid md:grid-cols-2 gap-3">${group.matches.map(renderMatch).join('')}</div>
+      </section>`).join('');
+  }catch(err){
+    $('matchCount').textContent = 'Veri hatası';
+    $('status').textContent = err.message + '. Sahte/yedek maç gösterilmiyor; Maçkolik verisi alınamadığında hata açıkça bildiriliyor.';
+    $('empty').classList.remove('hidden');
+  }finally{
+    $('refreshBtn').disabled = false;
+    $('refreshBtn').textContent = 'Yenile';
+  }
+}
+$('refreshBtn').addEventListener('click',loadFixtures);
+loadFixtures();
+setInterval(loadFixtures, 5 * 60 * 1000);
+</script>
+</body>
+</html>
