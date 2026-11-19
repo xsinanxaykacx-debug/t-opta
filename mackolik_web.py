@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, abort, jsonify, send_from_directory
 
 from mackolik_provider import collect_upcoming
 from market_1x2_analysis import market_probabilities
@@ -144,6 +144,23 @@ def fixtures_today():
             "leagues": [],
             "matches": [],
         }), 502
+
+
+@app.get("/outputs/<filename>")
+def download_output(filename):
+    allowed = {
+        "upcoming_market_picks.csv",
+        "all_upcoming_market_favorites.csv",
+        "upcoming_coupons.csv",
+        "upcoming_coupon_summary.csv",
+        "upcoming_prediction_summary.json",
+    }
+    if filename not in allowed:
+        abort(404)
+    path = OUTPUT_DIR / filename
+    if not path.is_file():
+        abort(404)
+    return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
 
 
 @app.get("/health")
