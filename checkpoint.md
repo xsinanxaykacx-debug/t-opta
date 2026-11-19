@@ -107,3 +107,16 @@
 - This remains development validation only. Final holdout remains sealed, and no performance claim is made.
 
 - Extended each segment with a like-for-like market-direction baseline: selected-side bet count, hit rate, average odds, break-even hit rate, and ROI. This allows direct model-versus-market comparison within the same league/season group rather than reporting model results alone.
+
+
+## 1X2 bookmaker-market diagnostics — 2026-11-19
+- Added isolated `market_1x2_analysis.py` and tests in `tests/test_market_1x2_analysis.py`.
+- The analysis uses a complete H/D/A odds triplet from one source only; source preference is Avg, then BbAv, then B365. It never mixes home/draw/away prices across bookmakers.
+- Raw implied probabilities are de-vigged by dividing each inverse price by the sum of all three inverse prices.
+- The market favorite is the highest de-vigged probability. Reports separate favorite hit rate, predicted Home/Draw/Away accuracy, actual outcome counts, multiclass Brier score, and confidence bands (50–60%, 60–70%, 70–80%, 80%+).
+- Reports are split chronologically by complete UTC dates: first 70% discovery, next 15% validation, last 15% sealed holdout. The script records holdout row count/date range only and explicitly does not calculate holdout metrics.
+- League, season (July boundary), and league-season descriptive tables are emitted separately for discovery and validation.
+- FTHG/FTAG are used only to construct the final H/D/A outcome label. No target-match xG, shots, possession, corners, team stats, or model outputs enter market probabilities.
+- The odds archive has no capture timestamps; the script explicitly reports that pre-kickoff availability cannot be independently verified. No claim of verified pre-match odds is allowed until provenance/timestamps are confirmed.
+- CI workflow now runs the 1X2 diagnostics and uploads both odds-only and 1X2 reports. Awaiting the new run on the updated branch before claiming tests or dataset analysis passed.
+- PR #5 remains draft/open; do not merge or modify main/BOT.py.
