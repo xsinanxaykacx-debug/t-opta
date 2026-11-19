@@ -67,6 +67,23 @@ def test_build_reports_creates_market_only_reports_and_does_not_score_holdout(tm
     assert "away_f1" in segments.columns
     bands = pd.read_csv(tmp_path / "market_1x2_probability_bands.csv")
     assert set(bands["partition"]) == {"discovery", "validation"}
+    assert {
+        "favorite_hit_rate_ci95_lower",
+        "favorite_hit_rate_ci95_upper",
+        "favorite_calibration_gap",
+        "favorite_calibration_gap_ci95_lower",
+        "favorite_calibration_gap_ci95_upper",
+        "favorite_wins",
+    } <= set(bands.columns)
+    nonempty = bands["favorite_count"] > 0
+    assert (bands.loc[nonempty, "favorite_hit_rate_ci95_lower"] <=
+            bands.loc[nonempty, "favorite_hit_rate"]).all()
+    assert (bands.loc[nonempty, "favorite_hit_rate"] <=
+            bands.loc[nonempty, "favorite_hit_rate_ci95_upper"]).all()
+    assert np.allclose(
+        bands.loc[nonempty, "favorite_calibration_gap"],
+        bands.loc[nonempty, "favorite_hit_rate"] - bands.loc[nonempty, "mean_confidence"],
+    )
     assert (tmp_path / "market_1x2_summary.json").exists()
 
 
