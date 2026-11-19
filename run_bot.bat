@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 
-if not exist ".venv\\Scripts\\python.exe" (
+if not exist ".venv\Scripts\python.exe" (
     py -3 -m venv .venv
     if errorlevel 1 (
         echo Python 3 bulunamadi. Python 3.11 veya 3.12 kurup tekrar deneyin.
@@ -11,7 +11,7 @@ if not exist ".venv\\Scripts\\python.exe" (
     )
 )
 
-".venv\\Scripts\\python.exe" -m pip install -r requirements.txt
+".venv\Scripts\python.exe" -m pip install -r requirements.txt
 if errorlevel 1 (
     echo Paket kurulumu basarisiz.
     pause
@@ -22,9 +22,9 @@ if /I "%~1"=="--rebuild" (
     if exist "results_market_1x2" rmdir /s /q "results_market_1x2"
 )
 
-if not exist "results_market_1x2\\market_1x2_summary.json" (
+if not exist "results_market_1x2\market_1x2_summary.json" (
     echo Gecmis oran verisi analiz ediliyor...
-    ".venv\\Scripts\\python.exe" market_1x2_analysis.py xgo.csv --out results_market_1x2
+    ".venv\Scripts\python.exe" market_1x2_analysis.py xgo.csv --out results_market_1x2
     if errorlevel 1 (
         echo Gecmis veri analizi basarisiz.
         pause
@@ -44,7 +44,7 @@ if not exist "upcoming.csv" (
 
 echo.
 echo Maclar analiz ediliyor...
-".venv\\Scripts\\python.exe" market_1x2_predict.py upcoming.csv --model-summary results_market_1x2\\market_1x2_summary.json --out results_upcoming
+".venv\Scripts\python.exe" market_1x2_predict.py upcoming.csv --model-summary results_market_1x2\market_1x2_summary.json --out results_upcoming
 if errorlevel 1 (
     echo Tahmin islemi basarisiz.
     pause
