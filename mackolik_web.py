@@ -18,6 +18,14 @@ OUTPUT_DIR = ROOT / "results_upcoming"
 app = Flask(__name__, static_folder=None)
 
 
+def _normalize_1x2_probabilities(probabilities: dict[str, float]) -> dict[str, float]:
+    """Remove the 1X2 overround by scaling inverse odds to a 100% total."""
+    total = sum(float(value) for value in probabilities.values())
+    if total <= 0 or not all(float(value) > 0 for value in probabilities.values()):
+        raise ValueError("1X2 olasılıkları pozitif ve toplamı sıfırdan büyük olmalı.")
+    return {key: float(value) / total for key, value in probabilities.items()}
+
+
 def _load_selected_bands():
     if not SUMMARY_PATH.exists():
         raise RuntimeError(
@@ -54,16 +62,21 @@ def _analyze_rows(rows: list[dict]) -> dict:
 
     matches = []
     for index, row in analyzed.iterrows():
-        probabilities = {
+        raw_probabilities = {
             "1": float(row["p_home"]),
             "X": float(row["p_draw"]),
             "2": float(row["p_away"]),
         }
+        probabilities = _normalize_1x2_probabilities(raw_probabilities)
         favorite_key = max(probabilities, key=probabilities.get)
         favorite_type = {"1": "MS1", "X": "MSX", "2": "MS2"}[favorite_key]
         favorite_probability = probabilities[favorite_key]
+        # Historical eligibility was calibrated on raw implied-probability bands;
+        # keep it informational and independent from the displayed normalized bands.
+        raw_favorite_probability = raw_probabilities[favorite_key]
+        historical_band = _band_for_probability(raw_favorite_probability)
         band = _band_for_probability(favorite_probability)
-        is_eligible = (band, favorite_type) in selected_pairs
+        is_eligible = (historical_band, favorite_type) in selected_pairs
         matches.append({
             "match_id": str(row.get("MatchId", "")),
             "league": str(row.get("League", "Diğer ligler")),
@@ -77,6 +90,7 @@ def _analyze_rows(rows: list[dict]) -> dict:
                 "2": float(row["odds_away"]),
             },
             "probabilities_pct": {key: round(value * 100, 2) for key, value in probabilities.items()},
+            "raw_probabilities_pct": {key: round(value * 100, 2) for key, value in raw_probabilities.items()},
             "favorite": favorite_type,
             "favorite_probability_pct": round(favorite_probability * 100, 2),
             "probability_band": band,
