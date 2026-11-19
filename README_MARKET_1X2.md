@@ -18,7 +18,7 @@ The report is chronological: 70% discovery, 15% validation, final 15% sealed and
 - `market_1x2_coupon_simulations.csv`: validation group simulations using unique same-day fixture combinations only.
 - `market_1x2_summary.json`: selected candidate bands and aggregate results.
 
-Candidate selections are made independently for every probability band and favorite type (MS1, MSX, MS2), using discovery only: each band/type pair must have at least 50 matches, at least 75% favorite hit rate, and a Wilson 95% confidence-interval lower bound of at least 75%. Only qualifying band/type pairs are evaluated on validation and eligible for upcoming picks. A strong MS1 segment cannot make a weak MSX or MS2 segment eligible. The final 15% holdout is not used.
+Candidate selections are made independently for every 60%+ probability band and favorite type (MS1, MSX, MS2), using discovery only: each band/type pair must have at least 50 matches, at least 75% favorite hit rate, and a Wilson 95% confidence-interval lower bound of at least 75%. Only qualifying band/type pairs are evaluated on validation and eligible for upcoming picks. A strong MS1 segment cannot make a weak MSX or MS2 segment eligible. The final 15% holdout is not used.
 
 ## Automatic upcoming fixtures, odds and web dashboard from Mackolik
 
