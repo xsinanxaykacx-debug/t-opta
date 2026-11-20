@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Maçkolik arşivi — v15.13
+Maçkolik arşivi — v15.14 (MatchData detayları ertelendi)
 + Gün tamamlanma doğrulaması (artık tek maçla gün "tamam" sayılmıyor)
 + Lig imzası değişince checkpoint reddi (eski grup verisi karışmıyor)
 + HTTP kilidi yalnızca throttle kararını kapsıyor (gerçek eşzamanlılık)
@@ -102,7 +102,9 @@ EXCEL_KAYIT_ARALIGI = 500
 ISTATISTIK_ON_EK = "İSTATİSTİK | "
 MAKS_TUR = 3
 LOG_AKTIF = True
-MATCHDATA_AKTIF = True
+# İlk aşamada yalnızca maç sonucu/istatistik/oran arşivi çekilir.
+# Kadro, yedek, hakem ve maç olayları ikinci aşamaya bırakılır.
+MATCHDATA_AKTIF = False
 
 # ═══ HTTP THROTTLE ═══
 ESZAMANLI_ISTEK = 2
