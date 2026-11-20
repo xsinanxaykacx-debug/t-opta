@@ -55,14 +55,25 @@ AKTIF_LIGLER = set()
 AKTIF_ETIKET = "ALL"
 
 
+TUM_FUTBOL_LIGLERI_AKTIF = False
+
+
 def _lig_uygun_mu(yarisma):
     if not isinstance(yarisma, list) or len(yarisma) < 3:
         return False
     try:
-        ulke_id = int(yarisma[0]); lig_id = int(yarisma[2])
+        ulke_id = int(yarisma[0])
+        lig_id = int(yarisma[2])
     except (TypeError, ValueError):
         return False
+    if TUM_FUTBOL_LIGLERI_AKTIF:
+        return ulke_id > 0 and lig_id > 0
     return (lig_id, ulke_id) in AKTIF_LIGLER
+
+
+def _iddaa_kodu_var_mi(deger):
+    kod = metin_temizle(deger).casefold()
+    return kod not in {"", "0", "-", "—", "none", "null", "nan"}
 
 
 def _lig_filtresi_imzasi():
@@ -1891,6 +1902,10 @@ def iddaa_bilgi(basla, son, hedef_gunler=None, ara_kayit_dosyasi=None,
                 if not mac_id.isdigit() or not ev or not dep:
                     continue
                 iddaa_kodu = metin_temizle(kayit[14]) if len(kayit) > 14 else ""
+                # İddaa kodu olmayan maçların oran arşivi bulunmadığından
+                # bunları daha en başta kapsam dışı bırak.
+                if not _iddaa_kodu_var_mi(iddaa_kodu):
+                    continue
                 iy_skor = metin_temizle(kayit[7]) if len(kayit) > 7 else ""
                 if not iy_skor:
                     iy_ev = sayiya_cevir(kayit[10]) if len(kayit) > 10 else None
@@ -2699,13 +2714,20 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     AKTIF_GRUPLAR, AKTIF_ETIKET = _gruplari_coz(args.grup)
+    TUM_FUTBOL_LIGLERI_AKTIF = (
+        not args.grup
+        or args.grup.strip().upper() in {"ALL", "HEPSI", "HEPSİ"}
+    )
     AKTIF_LIGLER = set()
     for kod in AKTIF_GRUPLAR:
         AKTIF_LIGLER.update(ULKE_GRUPLARI[kod]["ligler"])
 
-    print(f"[GRUP] {AKTIF_ETIKET} | "
-          f"{', '.join(ULKE_GRUPLARI[k]['ad'] for k in AKTIF_GRUPLAR)} | "
-          f"{len(AKTIF_LIGLER)} lig")
+    if TUM_FUTBOL_LIGLERI_AKTIF:
+        print("[GRUP] ALL | Tüm futbol ligleri | Yalnızca İddaa kodlu maçlar")
+    else:
+        print(f"[GRUP] {AKTIF_ETIKET} | "
+              f"{', '.join(ULKE_GRUPLARI[k]['ad'] for k in AKTIF_GRUPLAR)} | "
+              f"{len(AKTIF_LIGLER)} lig | Yalnızca İddaa kodlu maçlar")
 
     try:
         baslangic, bitis = tarih_araligi_iste()
