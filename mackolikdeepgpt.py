@@ -190,6 +190,11 @@ def metin_temizle(deger):
     return re.sub(r"\s+", " ", str(deger)).strip()
 
 
+def _iddaa_kodu_var_mi(deger):
+    kod = metin_temizle(deger).casefold()
+    return kod not in {"", "0", "-", "—", "none", "null", "nan"}
+
+
 def sure_formatla(saniye):
     saniye = max(0, int(saniye))
     saat, kalan = divmod(saniye, 3600)
@@ -1792,6 +1797,9 @@ def excel_ara_kaydet(genis_veri, oran_kolonlari, excel_dosya, hata_dosya, hatala
         if not isinstance(bilgi, dict):
             continue
         kayit = dict(bilgi)
+        # Çıktıda yalnızca İddaa kodu bulunan maçlar tutulur.
+        if not _iddaa_kodu_var_mi(kayit.get("İddaa Kodu", "")):
+            continue
         # Excel'e yalnızca en az bir hedef market oranı bulunan maçlar girer.
         if not any(metin_temizle(kayit.get(kolon, ""))
                    for kolon in SABIT_ORAN_KOLONLARI):
@@ -2005,6 +2013,8 @@ def iddaa_bilgi(basla, son, hedef_gunler=None, ara_kayit_dosyasi=None,
                 if not mac_id.isdigit() or not ev or not dep:
                     continue
                 iddaa_kodu = metin_temizle(kayit[14]) if len(kayit) > 14 else ""
+                if not _iddaa_kodu_var_mi(iddaa_kodu):
+                    continue
                 iy_skor = metin_temizle(kayit[7]) if len(kayit) > 7 else ""
                 if not iy_skor:
                     iy_ev = sayiya_cevir(kayit[10]) if len(kayit) > 10 else None
@@ -2421,6 +2431,23 @@ async def iddaa_bahis_oranlari_async(basla, son):
                 liste_hatalari, _gun_araligi(basla, son), tamamlanan_gunler)
             hatalari_birlestir(hatalar, liste_hatalari)
             mac_listesi_durum = "Tamam" if not liste_hatalari else "Kısmi"
+
+        # Eski checkpoint'lerdeki tüm maç listesini de yalnızca İddaa kodlu
+        # maçlara indir; kodsuz maçların arşiv sayfalarına istek gönderme.
+        if not df_mac.empty and "İddaa Kodu" in df_mac.columns:
+            onceki_sayi = len(df_mac)
+            df_mac = df_mac[
+                df_mac["İddaa Kodu"].map(_iddaa_kodu_var_mi)
+            ].copy().reset_index(drop=True)
+            elenen_sayi = onceki_sayi - len(df_mac)
+            print(
+                f"[İDDAA FİLTRESİ] {len(df_mac):,} İddaa kodlu maç kaldı; "
+                f"{elenen_sayi:,} kodsuz maç arşiv taramasından çıkarıldı."
+            )
+        else:
+            print("[İDDAA FİLTRESİ] İddaa kodu alanı bulunamadı; güvenlik için "
+                  "arşiv taraması başlatılmayacak.")
+            df_mac = pd.DataFrame()
 
         hatalar = hatalari_tekrarsiz_yap(hatalar)
 
