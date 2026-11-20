@@ -4,20 +4,8 @@ Maçkolik arşivi — v15.14 ORAN ODAKLI
 - Maç keşfi, tarih aralığı, takım bilgileri ve İddaa kodu korunur.
 - Arşiv sayfasından bahis marketleri ve oranlar çekilir.
 - Seyirci, hakem, stadyum, teknik direktör, TV, kadro ve maç olayları kaldırıldı.
-- MatchData ve maç istatistikleri için ek HTTP istekleri kaldırıldı.
+- MatchData ve istatistik verileri için ek HTTP istekleri kaldırıldı.
 - JSON checkpoint, append-only log, Excel ve hata raporu korunur.
-""""""
-Maçkolik arşivi — v15.13
-+ Gün tamamlanma doğrulaması (artık tek maçla gün "tamam" sayılmıyor)
-+ Lig imzası değişince checkpoint reddi (eski grup verisi karışmıyor)
-+ HTTP kilidi yalnızca throttle kararını kapsıyor (gerçek eşzamanlılık)
-+ MatchData sadece başarıda işaretleniyor (transient hatalar tekrar deneniyor)
-+ Hata listeleri için yapı doğrulaması
-+ process_row tamamen korumalı (gather sızıntısı yok)
-+ Global cooldown logu kalan süreyi 15 saniyede bir gösterir
-+ WARP reset iptalinde reset bayrağı finally ile temizlenir
-+ Tamamlanan tüm günlerde eski Kısmi durumu Tamam'a çevrilir
-+ v15.13: MatchData JSON parse hatası tolerant fix (geçersiz \\escape)
 """
 
 import asyncio
@@ -184,7 +172,6 @@ def sure_formatla(saniye):
 
 
 # ============================================================
-# HATA DEPOSU# ============================================================
 # HATA DEPOSU
 # ============================================================
 
@@ -988,8 +975,6 @@ async def istek_yap_async(url, params=None, livedata=False, max_retries=6):
 # ============================================================
 # ARŞİV SAYFASI PARSE
 # ============================================================
-# ARŞİV SAYFASI PARSE
-# ============================================================
 
 def mac_arsiv_url(row):
     match_id = metin_temizle(row.get("Maç ID", ""))
@@ -1099,9 +1084,6 @@ def arsiv_mac_bilgisi_cikar(soup, row):
     return sonuc
 
 
-def arsiv_sayfa_oranlari    return sonuc
-
-
 def arsiv_sayfa_oranlari(soup):
     kapsayici = soup.select_one("#compare-left-coll")
     if kapsayici is None:
@@ -1191,7 +1173,7 @@ def _eski_tablo_ayristir(tablo, rows):
         bekleyen = None
 
 
-def hata_sayfasi_midef hata_sayfasi_mi(soup):
+def hata_sayfasi_mi(soup):
     title = soup.find("title")
     if title and "hata" in title.get_text(" ", strip=True).lower():
         return True
@@ -1215,7 +1197,6 @@ async def get_bahis_oranlari_async(row):
 
 
 # ============================================================
-# EXCEL# ============================================================
 # EXCEL
 # ============================================================
 
@@ -1609,7 +1590,6 @@ def _tamamlanma_kriteri(bilgi):
 
 
 # ============================================================
-# TEK MAÇ# ============================================================
 # TEK MAÇ
 # ============================================================
 
@@ -1618,7 +1598,6 @@ async def _tek_mac_isle_async(row, tur, genis_veri, hatalar, oran_kolonlari):
     bilgi = genis_veri[mac_id]
 
     try:
-        sonuc = await get_bahis_oranlari_async    try:
         sonuc = await get_bahis_oranlari_async(row.to_dict())
 
         for alan, deger in sonuc["mac_bilgisi"].items():
@@ -1659,7 +1638,7 @@ async def _tek_mac_isle_async(row, tur, genis_veri, hatalar, oran_kolonlari):
                         f"Tur {tur}/{MAKS_TUR}."
             })
 
-        if not bilgi.get("İY Skor"):        if not bilgi.get("İY Skor"):
+        if not bilgi.get("İY Skor"):
             bilgi["İY Skor Kaynağı"] = ""
             hatalar = hata_kayitlarini_temizle(
                 hatalar, mac_id, baslangiclar=("İY SKOR:",))
@@ -1677,7 +1656,7 @@ async def _tek_mac_isle_async(row, tur, genis_veri, hatalar, oran_kolonlari):
 
         return "ok", hatalar
 
-    except ErisimKisitlamaHatasi    except ErisimKisitlamaHatasi as hata:
+    except ErisimKisitlamaHatasi as hata:
         bilgi["Arşiv Sayfa Durumu"] = f"Erişim Hatası (HTTP {hata.durum_kodu})"
         bilgi["Oran Durumu"] = f"Çekilemedi (HTTP {hata.durum_kodu})"
         hatalar = hata_kayitlarini_temizle(
