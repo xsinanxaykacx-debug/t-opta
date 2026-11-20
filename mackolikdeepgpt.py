@@ -1502,12 +1502,19 @@ def arsiv_sayfa_oranlari(soup):
             _eski_tablo_ayristir(tablo, rows)
     benzersiz, gorulen = [], set()
     for item in rows:
-        if not _oran_satiri_uygun_mu(item["Bahis Türü"], item["Seçim"]):
+        market = metin_temizle(item.get("Bahis Türü", ""))
+        secim = metin_temizle(item.get("Seçim", ""))
+        oran = oran_temizle(item.get("Oran", ""))
+        if not market or not secim or not oran:
             continue
-        key = (item["Bahis Türü"], item["Seçim"], item["Oran"])
+        key = (market, secim, oran)
         if key not in gorulen:
             gorulen.add(key)
-            benzersiz.append(item)
+            benzersiz.append({
+                "Bahis Türü": market,
+                "Seçim": secim,
+                "Oran": oran,
+            })
     return benzersiz
 
 
@@ -1689,7 +1696,7 @@ async def get_bahis_oranlari_async(row):
 # EXCEL
 # ============================================================
 
-def _excel_yaz_guvenli(df_maclar, dosya, max_deneme=3):
+def _excel_yaz_guvenli(df_maclar, dosya, df_tum_oranlar=None, max_deneme=3):
     hedef = Path(dosya)
     gecici = hedef.with_name(f"{hedef.stem}.tmp{hedef.suffix}")
     for deneme in range(max_deneme):
@@ -1704,6 +1711,20 @@ def _excel_yaz_guvenli(df_maclar, dosya, max_deneme=3):
                     baslik = "" if hucre.value is None else str(hucre.value)
                     ws.column_dimensions[hucre.column_letter].width = min(
                         max(len(baslik) + 2, 12), 45)
+
+                if df_tum_oranlar is not None:
+                    df_tum_oranlar.to_excel(
+                        writer, index=False, sheet_name="Tum Oranlar"
+                    )
+                    ws_oran = writer.sheets["Tum Oranlar"]
+                    ws_oran.freeze_panes = "A2"
+                    ws_oran.auto_filter.ref = ws_oran.dimensions
+                    for sutun_no in range(1, ws_oran.max_column + 1):
+                        hucre = ws_oran.cell(row=1, column=sutun_no)
+                        baslik = "" if hucre.value is None else str(hucre.value)
+                        ws_oran.column_dimensions[
+                            hucre.column_letter
+                        ].width = min(max(len(baslik) + 2, 12), 45)
 
             if not gecici.exists() or gecici.stat().st_size < 200:
                 boyut = gecici.stat().st_size if gecici.exists() else 0
@@ -1789,32 +1810,69 @@ def hata_raporu_yaz(hatalar, dosya):
 
 
 def excel_ara_kaydet(genis_veri, oran_kolonlari, excel_dosya, hata_dosya, hatalar):
-    oranlar = list(SABIT_ORAN_KOLONLARI)
-    # Çıktı her zaman tam 15 sütundur; eski checkpoint'teki ek alanlar yazılmaz.
-    tum_kolonlar = MAC_KOLONLARI + oranlar
-    satirlar = []
-    for bilgi in genis_veri.values():
+    # Model sayfası geriye dönük uyumluluk için aynı 15 sütunda kalır.
+    tum_kolonlar = MAC_KOLONLARI + list(SABIT_ORAN_KOLONLARI)
+    mac_satirlari = []
+    tum_oran_satirlari = []
+
+    for mac_id, bilgi in genis_veri.items():
         if not isinstance(bilgi, dict):
             continue
         kayit = dict(bilgi)
-        # Çıktıda yalnızca İddaa kodu bulunan maçlar tutulur.
+
         if not _iddaa_kodu_var_mi(kayit.get("İddaa Kodu", "")):
             continue
-        # Excel'e yalnızca en az bir hedef market oranı bulunan maçlar girer.
-        if not any(metin_temizle(kayit.get(kolon, ""))
-                   for kolon in SABIT_ORAN_KOLONLARI):
+
+        mac_oranlari = kayit.get("Tüm Oranlar", [])
+        if not isinstance(mac_oranlari, list):
+            mac_oranlari = []
+
+        # Maçlar sayfasına en az bir gerçek market oranı olan maçlar alınır.
+        if not mac_oranlari:
             continue
+
         if not metin_temizle(kayit.get("Lig", "")):
             kayit["Lig"], kayit["Sezon"] = _lig_sezonu_ayir(
-                kayit.get("Lig/Sezon", ""))
+                kayit.get("Lig/Sezon", "")
+            )
         kayit["İY Skor"] = _skor_duzenle(kayit.get("İY Skor", ""))
         kayit["Skor"] = _skor_duzenle(kayit.get("Skor", ""))
         kayit["İY Sonucu"] = _skor_sonucu(kayit["İY Skor"])
         kayit["Maç Sonucu"] = _skor_sonucu(kayit["Skor"])
-        satirlar.append(kayit)
-    df_genis = pd.DataFrame(satirlar).reindex(columns=tum_kolonlar)
+        mac_satirlari.append(kayit)
 
-    excel_ok = _excel_yaz_guvenli(df_genis, excel_dosya)
+        for bahis in mac_oranlari:
+            if not isinstance(bahis, dict):
+                continue
+            market = metin_temizle(bahis.get("Bahis Türü", ""))
+            secim = metin_temizle(bahis.get("Seçim", ""))
+            oran = oran_temizle(bahis.get("Oran", ""))
+            if not market or not secim or not oran:
+                continue
+            tum_oran_satirlari.append({
+                "Maç ID": str(mac_id),
+                "Tarih": kayit.get("Tarih", ""),
+                "Lig": kayit.get("Lig", ""),
+                "Sezon": kayit.get("Sezon", ""),
+                "Ev Sahibi": kayit.get("Ev Sahibi", ""),
+                "Deplasman": kayit.get("Deplasman", ""),
+                "Bahis Türü": market,
+                "Seçim": secim,
+                "Oran": oran,
+            })
+
+    df_maclar = pd.DataFrame(mac_satirlari).reindex(columns=tum_kolonlar)
+    oran_sutunlari = [
+        "Maç ID", "Tarih", "Lig", "Sezon", "Ev Sahibi",
+        "Deplasman", "Bahis Türü", "Seçim", "Oran"
+    ]
+    df_tum_oranlar = pd.DataFrame(
+        tum_oran_satirlari, columns=oran_sutunlari
+    )
+
+    excel_ok = _excel_yaz_guvenli(
+        df_maclar, excel_dosya, df_tum_oranlar=df_tum_oranlar
+    )
     hata_ok = hata_raporu_yaz(hatalar, hata_dosya)
     return excel_ok, hata_ok
 
@@ -2085,8 +2143,14 @@ def _eksik_gunleri_cevir(df_mac, hatalar, basla, son, ara_liste_dosyasi,
 def _tamamlanma_kriteri(bilgi):
     if not isinstance(bilgi, dict):
         return False
-    return (bilgi.get("Arşiv Sayfa Durumu") == "Tamam"
-            and bilgi.get("Oran Durumu") == "Oran bulundu")
+    # Eski checkpoint kayıtları Tüm Oranlar alanını içermediğinden
+    # yeni şemaya geçişte bir kez yeniden taranırlar.
+    if not isinstance(bilgi.get("Tüm Oranlar"), list):
+        return False
+    return (
+        bilgi.get("Arşiv Sayfa Durumu") == "Tamam"
+        and bilgi.get("Oran Durumu") == "Oran bulundu"
+    )
 
 
 def _islem_sonlandi_mi(bilgi):
@@ -2103,7 +2167,8 @@ def _islem_sonlandi_mi(bilgi):
         "Arşiv sayfasında uygun oran yok",
     }
     return (
-        sayfa_durumu in {"Oran Eksik", "Oran Yok"}
+        isinstance(bilgi.get("Tüm Oranlar"), list)
+        and sayfa_durumu in {"Oran Eksik", "Oran Yok"}
         and oran_durumu in oran_yok_durumlari
     )
 
@@ -2168,21 +2233,33 @@ async def _tek_mac_isle_async(row, tur, genis_veri, hatalar, oran_kolonlari):
                 bilgi[alan] = deger
         bilgi["Kaynak URL"] = sonuc["kaynak_url"]
         _bilgiden_oran_istatistik_sil(bilgi, oran_kolonlari)
+        for kolon in SABIT_ORAN_KOLONLARI:
+            bilgi.pop(kolon, None)
 
+        tum_oranlar = []
         gecerli_oranlar = []
+
         for bahis in sonuc["oranlar"]:
             market = metin_temizle(bahis.get("Bahis Türü", ""))
             secim = metin_temizle(bahis.get("Seçim", ""))
             oran = oran_temizle(bahis.get("Oran", ""))
-            if not oran:
+            if not market or not secim or not oran:
                 continue
-            kolon = _oran_kolon_adi(market, secim)
-            if not kolon:
-                continue
-            oran_kolonu_ekle(oran_kolonlari, kolon)
-            gecerli_oranlar.append((kolon, oran))
 
-        if gecerli_oranlar:
+            tum_oranlar.append({
+                "Bahis Türü": market,
+                "Seçim": secim,
+                "Oran": oran,
+            })
+
+            kolon = _oran_kolon_adi(market, secim)
+            if kolon:
+                oran_kolonu_ekle(oran_kolonlari, kolon)
+                gecerli_oranlar.append((kolon, oran))
+
+        bilgi["Tüm Oranlar"] = tum_oranlar
+
+        if tum_oranlar:
             for kolon, oran in gecerli_oranlar:
                 bilgi[kolon] = oran
             bilgi["Oran Durumu"] = "Oran bulundu"
@@ -2192,8 +2269,7 @@ async def _tek_mac_isle_async(row, tur, genis_veri, hatalar, oran_kolonlari):
                 icerenler=("oran bulunamadı",),
                 baslangiclar=("ARŞİV: HTTP",))
         else:
-            # Sayfa başarıyla açıldı; uygun market yoksa terminal durumdur.
-            # Eski checkpoint'lerdeki "Oran Eksik" kayıtları da tanınır.
+            # Sayfa başarıyla açıldı ancak geçerli oran içeren market bulunamadı.
             bilgi["Oran Durumu"] = "Arşiv sayfasında uygun oran yok"
             bilgi["Arşiv Sayfa Durumu"] = "Oran Yok"
             hatalar = hata_kayitlarini_temizle(
