@@ -102,7 +102,7 @@ EXCEL_KAYIT_ARALIGI = 500
 ISTATISTIK_ON_EK = "İSTATİSTİK | "
 MAKS_TUR = 3
 LOG_AKTIF = True
-MATCHDATA_AKTIF = True
+MATCHDATA_AKTIF = False  # Detay taraması yalnızca --detay ile açılır.
 
 # ═══ HTTP THROTTLE ═══
 ESZAMANLI_ISTEK = 2
@@ -2713,7 +2713,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Maçkolik arşiv çekimi (v15.13)")
     parser.add_argument("--grup", "-g", default=None)
     parser.add_argument("--excel", action="store_true")
+    parser.add_argument(
+        "--detay", action="store_true",
+        help="Tamamlanmış maçların eksik kadro/yedek/olay detaylarını ikinci aşamada çeker."
+    )
     args = parser.parse_args()
+
+    # Ana tarama hızlı kalır; MatchData yalnızca açıkça istendiğinde çalışır.
+    MATCHDATA_AKTIF = bool(args.detay)
 
     AKTIF_GRUPLAR, AKTIF_ETIKET = _gruplari_coz(args.grup)
     TUM_FUTBOL_LIGLERI_AKTIF = (
@@ -2726,6 +2733,7 @@ if __name__ == "__main__":
 
     if TUM_FUTBOL_LIGLERI_AKTIF:
         print("[GRUP] ALL | Tüm futbol ligleri | Yalnızca İddaa kodlu maçlar")
+    print("[DETAY] MatchData açık" if MATCHDATA_AKTIF else "[DETAY] Kadro/yedek/olay ek istekleri kapalı; ana arşiv taraması")
     else:
         print(f"[GRUP] {AKTIF_ETIKET} | "
               f"{', '.join(ULKE_GRUPLARI[k]['ad'] for k in AKTIF_GRUPLAR)} | "
