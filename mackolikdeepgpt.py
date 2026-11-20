@@ -2175,7 +2175,11 @@ async def iddaa_bahis_oranlari_async(basla, son):
     yollar = dosya_yollari_uret(basla, son)
     excel_dosya = yollar["excel"]
     hata_dosya = yollar["hata"]
-    ara_liste_dosyasi = yollar["mac_listesi_gecici"]
+    ara_liste_dosyasi = (
+        yollar["klasor"] / "mac_listesi_gecici_all_countries.json"
+        if TUM_FUTBOL_LIGLERI_AKTIF
+        else yollar["mac_listesi_gecici"]
+    )
 
     mac_log = CheckpointLog(yollar["log"])
     kayit_locksu = asyncio.Lock()
