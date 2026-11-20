@@ -2061,12 +2061,17 @@ def iddaa_bilgi(basla, son, hedef_gunler=None, ara_kayit_dosyasi=None,
         gun_mac_sayisi = 0
         for kayit in kayitlar:
             try:
-                if not isinstance(kayit, list) or len(kayit) < 37:
+                if not isinstance(kayit, list) or len(kayit) <= 36:
                     continue
                 yarisma = kayit[36]
-                if not isinstance(yarisma, list) or len(yarisma) < 12:
+                # Eski tarihli livedata kayıtlarında yarışma dizisi daha kısa
+                # olabiliyor. Lig eşleşmesi için ilk 3 alan yeterlidir.
+                if not isinstance(yarisma, list) or len(yarisma) < 3:
                     continue
-                if sayiya_cevir(yarisma[11]) != 1 or not _lig_uygun_mu(yarisma):
+                # Sport alanı mevcutsa futbol (1) olmalı. Eski şemada alan
+                # yoksa doğrulanmış futbol lig/ülke eşleşmesi esas alınır.
+                spor_turu = sayiya_cevir(yarisma[11]) if len(yarisma) > 11 else None
+                if spor_turu not in (None, 1) or not _lig_uygun_mu(yarisma):
                     continue
                 mac_id = metin_temizle(kayit[0])
                 ev, dep = metin_temizle(kayit[2]), metin_temizle(kayit[4])
