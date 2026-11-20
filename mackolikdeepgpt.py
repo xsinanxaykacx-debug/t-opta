@@ -59,17 +59,19 @@ TUM_FUTBOL_LIGLERI_AKTIF = False
 
 
 def _lig_uygun_mu(yarisma):
-    if not isinstance(yarisma, list) or len(yarisma) < 3:
+    if not isinstance(yarisma, list):
+        return False
+    if TUM_FUTBOL_LIGLERI_AKTIF:
+        # ALL: ülke/lig ID değerlerine bakmadan tüm futbol organizasyonlarını kabul et.
+        # Futbol ve geçerli İddaa kodu kontrolleri iddaa_bilgi() içinde yapılır.
+        return True
+    if len(yarisma) < 3:
         return False
     try:
         ulke_id = int(yarisma[0])
         lig_id = int(yarisma[2])
     except (TypeError, ValueError):
         return False
-    if TUM_FUTBOL_LIGLERI_AKTIF:
-        # ALL: ülke/lig ID listesiyle sınırlandırma yapma.
-        # İddaa kodu filtresi iddaa_bilgi() içinde ayrıca uygulanır.
-        return True
     return (lig_id, ulke_id) in AKTIF_LIGLER
 
 
@@ -80,7 +82,7 @@ def _iddaa_kodu_var_mi(deger):
 
 def _lig_filtresi_imzasi():
     if TUM_FUTBOL_LIGLERI_AKTIF:
-        return "ALL_FUTBOL_LIGLERI|IDDAA_KODLU"
+        return "ALL_COUNTRIES_ALL_LEAGUES_NO_ID_FILTER|FOOTBALL_IDDAA_CODE"
     parcalar = []
     for kod in sorted(AKTIF_GRUPLAR):
         parcalar.append(kod)
