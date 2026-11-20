@@ -77,6 +77,8 @@ def _iddaa_kodu_var_mi(deger):
 
 
 def _lig_filtresi_imzasi():
+    if TUM_FUTBOL_LIGLERI_AKTIF:
+        return "ALL_FUTBOL_LIGLERI|IDDAA_KODLU"
     parcalar = []
     for kod in sorted(AKTIF_GRUPLAR):
         parcalar.append(kod)
