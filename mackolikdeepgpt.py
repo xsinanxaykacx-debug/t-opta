@@ -67,7 +67,9 @@ def _lig_uygun_mu(yarisma):
     except (TypeError, ValueError):
         return False
     if TUM_FUTBOL_LIGLERI_AKTIF:
-        return ulke_id > 0 and lig_id > 0
+        # ALL: ülke/lig ID listesiyle sınırlandırma yapma.
+        # İddaa kodu filtresi iddaa_bilgi() içinde ayrıca uygulanır.
+        return True
     return (lig_id, ulke_id) in AKTIF_LIGLER
 
 
@@ -2191,7 +2193,10 @@ async def iddaa_bahis_oranlari_async(basla, son):
     print("=" * 76)
     print(f"Maçkolik ARŞİV v15.13: {basla} → {son}")
     print(f"[BAŞLANGIÇ] {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
-    print(f"Grup: {AKTIF_ETIKET}  ({', '.join(AKTIF_GRUPLAR)})")
+    if TUM_FUTBOL_LIGLERI_AKTIF:
+        print("Kapsam: TÜM ÜLKELER / TÜM FUTBOL LİGLERİ")
+    else:
+        print(f"Grup: {AKTIF_ETIKET}  ({', '.join(AKTIF_GRUPLAR)})")
     print(f"Eşzamanlı: {ESZAMANLI_ISTEK} | Min istek: {MIN_ISTEK_ARASI}s | "
           f"Jitter: {ISTEK_JITTER_ASYNC}s")
     print(f"TLS Impersonate: {CURL_IMPERSONATE}")
@@ -2697,7 +2702,7 @@ async def iddaa_bahis_oranlari_async(basla, son):
 
 def _gruplari_coz(grup_str):
     if not grup_str or grup_str.strip().upper() in {"ALL", "HEPSI", "HEPSİ"}:
-        return list(ULKE_GRUPLARI.keys()), "ALL"
+        return [], "ALL"
     kodlar = [k.strip().upper() for k in grup_str.split(",") if k.strip()]
     gecersiz = [k for k in kodlar if k not in ULKE_GRUPLARI]
     if gecersiz:
@@ -2723,11 +2728,12 @@ if __name__ == "__main__":
         or args.grup.strip().upper() in {"ALL", "HEPSI", "HEPSİ"}
     )
     AKTIF_LIGLER = set()
-    for kod in AKTIF_GRUPLAR:
-        AKTIF_LIGLER.update(ULKE_GRUPLARI[kod]["ligler"])
+    if not TUM_FUTBOL_LIGLERI_AKTIF:
+        for kod in AKTIF_GRUPLAR:
+            AKTIF_LIGLER.update(ULKE_GRUPLARI[kod]["ligler"])
 
     if TUM_FUTBOL_LIGLERI_AKTIF:
-        print("[GRUP] ALL | Tüm futbol ligleri | Yalnızca İddaa kodlu maçlar")
+        print("[KAPSAM] ALL | Ülke/lig ID kısıtı yok | Futbol + İddaa kodlu maçlar")
     else:
         print(f"[GRUP] {AKTIF_ETIKET} | "
               f"{', '.join(ULKE_GRUPLARI[k]['ad'] for k in AKTIF_GRUPLAR)} | "
