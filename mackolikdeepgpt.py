@@ -2733,11 +2733,12 @@ if __name__ == "__main__":
 
     if TUM_FUTBOL_LIGLERI_AKTIF:
         print("[GRUP] ALL | Tüm futbol ligleri | Yalnızca İddaa kodlu maçlar")
-    print("[DETAY] MatchData açık" if MATCHDATA_AKTIF else "[DETAY] Kadro/yedek/olay ek istekleri kapalı; ana arşiv taraması")
     else:
         print(f"[GRUP] {AKTIF_ETIKET} | "
               f"{', '.join(ULKE_GRUPLARI[k]['ad'] for k in AKTIF_GRUPLAR)} | "
               f"{len(AKTIF_LIGLER)} lig | Yalnızca İddaa kodlu maçlar")
+
+    print("[DETAY] MatchData açık" if MATCHDATA_AKTIF else "[DETAY] Kadro/yedek/olay ek istekleri kapalı; ana arşiv taraması")
 
     try:
         baslangic, bitis = tarih_araligi_iste()
