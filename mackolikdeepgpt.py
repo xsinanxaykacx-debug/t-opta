@@ -1497,9 +1497,11 @@ def arsiv_sayfa_oranlari(soup):
             oran = oran_temizle(value_div.get_text(" ", strip=True))
             if oran:
                 rows.append({"Bahis Türü": market, "Seçim": secim, "Oran": oran})
-    if not rows:
-        for tablo in kapsayici.select("table.iddaa-ms-h"):
-            _eski_tablo_ayristir(tablo, rows)
+    # Yeni div.md yapısının yanında varsa eski tablo yapısını da tara.
+    # Sonraki tekilleştirme aynı oranı iki kez yazmayı önler.
+    for tablo in kapsayici.select("table.iddaa-ms-h"):
+        _eski_tablo_ayristir(tablo, rows)
+
     benzersiz, gorulen = [], set()
     for item in rows:
         market = metin_temizle(item.get("Bahis Türü", ""))
