@@ -1792,6 +1792,10 @@ def excel_ara_kaydet(genis_veri, oran_kolonlari, excel_dosya, hata_dosya, hatala
         if not isinstance(bilgi, dict):
             continue
         kayit = dict(bilgi)
+        # Excel'e yalnızca en az bir hedef market oranı bulunan maçlar girer.
+        if not any(metin_temizle(kayit.get(kolon, ""))
+                   for kolon in SABIT_ORAN_KOLONLARI):
+            continue
         if not metin_temizle(kayit.get("Lig", "")):
             kayit["Lig"], kayit["Sezon"] = _lig_sezonu_ayir(
                 kayit.get("Lig/Sezon", ""))
@@ -2075,6 +2079,25 @@ def _tamamlanma_kriteri(bilgi):
             and bilgi.get("Oran Durumu") == "Oran bulundu")
 
 
+def _islem_sonlandi_mi(bilgi):
+    """Oranlı maçları ve başarıyla taranıp oran bulunmayan maçları tekrar deneme."""
+    if _tamamlanma_kriteri(bilgi):
+        return True
+    if not isinstance(bilgi, dict):
+        return False
+
+    sayfa_durumu = metin_temizle(bilgi.get("Arşiv Sayfa Durumu", ""))
+    oran_durumu = metin_temizle(bilgi.get("Oran Durumu", ""))
+    oran_yok_durumlari = {
+        "Arşiv sayfasında oran bulunamadı",
+        "Arşiv sayfasında uygun oran yok",
+    }
+    return (
+        sayfa_durumu in {"Oran Eksik", "Oran Yok"}
+        and oran_durumu in oran_yok_durumlari
+    )
+
+
 def _kadro_eksik_mi(bilgi):
     if not MATCHDATA_AKTIF:
         return False
@@ -2159,16 +2182,12 @@ async def _tek_mac_isle_async(row, tur, genis_veri, hatalar, oran_kolonlari):
                 icerenler=("oran bulunamadı",),
                 baslangiclar=("ARŞİV: HTTP",))
         else:
-            bilgi["Oran Durumu"] = "Arşiv sayfasında oran bulunamadı"
-            bilgi["Arşiv Sayfa Durumu"] = "Oran Eksik"
+            # Sayfa başarıyla açıldı; uygun market yoksa terminal durumdur.
+            # Eski checkpoint'lerdeki "Oran Eksik" kayıtları da tanınır.
+            bilgi["Oran Durumu"] = "Arşiv sayfasında uygun oran yok"
+            bilgi["Arşiv Sayfa Durumu"] = "Oran Yok"
             hatalar = hata_kayitlarini_temizle(
                 hatalar, mac_id, icerenler=("oran bulunamadı",))
-            hata_ekle(hatalar, {
-                "Tarih": bilgi.get("Tarih", ""), "ID": mac_id,
-                "Maç": bilgi.get("Maç", ""),
-                "Hata": f"Arşiv sayfası açıldı ancak geçerli oran yok. "
-                        f"Tur {tur}/{MAKS_TUR}."
-            })
 
         for kolon, deger in sonuc["istatistikler"].items():
             bilgi[kolon] = deger
@@ -2459,7 +2478,7 @@ async def iddaa_bahis_oranlari_async(basla, son):
             kalan_idler_tur = [
                 mid for mid in df_mac["Maç ID"].astype(str).tolist()
                 if mid not in kalici_hata_idler
-                and (not _tamamlanma_kriteri(genis_veri.get(mid, {}))
+                and (not _islem_sonlandi_mi(genis_veri.get(mid, {}))
                      or _matchdata_denenmeli_mi(genis_veri.get(mid, {})))
             ]
             if not kalan_idler_tur:
@@ -2634,7 +2653,7 @@ async def iddaa_bahis_oranlari_async(basla, son):
             hala_basarisiz_idler = [
                 mid for mid in kalan_idler_tur
                 if mid not in kalici_hata_idler
-                and (not _tamamlanma_kriteri(genis_veri.get(mid, {}))
+                and (not _islem_sonlandi_mi(genis_veri.get(mid, {}))
                      or _matchdata_denenmeli_mi(genis_veri.get(mid, {})))
             ]
             hala_basarisiz = len(hala_basarisiz_idler)
