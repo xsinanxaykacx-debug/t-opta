@@ -181,6 +181,11 @@ def index():
     return send_from_directory(WEB_DIR, "index.html")
 
 
+@app.get("/similar.js")
+def similar_script():
+    return send_from_directory(WEB_DIR, "similar.js")
+
+
 @app.get("/api/fixtures/today")
 def fixtures_today():
     try:
