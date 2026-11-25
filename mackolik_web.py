@@ -9,6 +9,7 @@ from flask import Flask, abort, jsonify, request, send_from_directory
 from mackolik_provider import collect_upcoming
 from market_1x2_analysis import market_probabilities
 from market_1x2_predict import _band_for_probability, predict_upcoming
+from modules.odds_snapshot_store import build_match_key, get_snapshots, record_snapshot
 from modules.odds_similarity_engine import find_similar_matches
 
 ROOT = Path(__file__).resolve().parent
@@ -16,6 +17,7 @@ WEB_DIR = ROOT / "web"
 SUMMARY_PATH = ROOT / "results_market_1x2" / "market_1x2_summary.json"
 HISTORICAL_TYPES_PATH = ROOT / "results_market_1x2" / "market_1x2_favorite_types.csv"
 HISTORY_CSV_PATH = ROOT / "xgo.csv"
+ODDS_DB_PATH = ROOT / "data" / "odds_snapshots.sqlite3"
 OUTPUT_DIR = ROOT / "results_upcoming"
 
 app = Flask(__name__, static_folder=None)
@@ -116,7 +118,18 @@ def _analyze_rows(rows: list[dict]) -> dict:
         historical_performance.update(historical_performance["validation"])
         historical_performance["partition"] = "chronological_validation"
         is_eligible = (band, favorite_type) in selected_pairs
+        match_key = build_match_key(
+            row.get("MatchId"), row.get("MatchURL"), row.get("Date"),
+            row.get("League"), row.get("HomeTeam"), row.get("AwayTeam")
+        )
+        live_odds = {
+            "1": float(row["odds_home"]),
+            "X": float(row["odds_draw"]),
+            "2": float(row["odds_away"]),
+        }
+        record_snapshot(match_key, live_odds, ODDS_DB_PATH)
         matches.append({
+            "match_key": match_key,
             "match_id": str(row.get("MatchId", "")),
             "league": str(row.get("League", "Diğer ligler")),
             "date": str(row.get("Date", "")),
@@ -184,6 +197,25 @@ def index():
 @app.get("/similar.js")
 def similar_script():
     return send_from_directory(WEB_DIR, "similar.js")
+
+
+@app.get("/api/matches/odds-history/<match_key>")
+def odds_history(match_key):
+    try:
+        snapshots = get_snapshots(match_key, ODDS_DB_PATH, limit=request.args.get("limit", 100))
+        movement = None
+        if len(snapshots) >= 2:
+            first, latest = snapshots[0]["odds"], snapshots[-1]["odds"]
+            movement = {key: round(latest[key] - first[key], 3) for key in ("1", "X", "2")}
+        return jsonify({
+            "status": "success",
+            "count": len(snapshots),
+            "snapshots": snapshots,
+            "movement_from_first": movement,
+            "note": "Yalnızca T-OPTA açıkken Maçkolik'ten gözlemlenen oran değişimleri kaydedilir; geçmişe dönük hareket verisi oluşturulmaz.",
+        })
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
 
 
 @app.get("/api/fixtures/today")
