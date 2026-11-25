@@ -202,7 +202,7 @@ def fixtures_today():
 def similar_matches():
     try:
         payload = request.get_json(silent=True) or {}
-        odds = payload.get("odds") or {}
+        raw_odds = payload.get("odds") or {}\n        odds = {\n            "home": raw_odds.get("1", raw_odds.get("home")),\n            "draw": raw_odds.get("X", raw_odds.get("draw")),\n            "away": raw_odds.get("2", raw_odds.get("away")),\n        }
         target_date = payload.get("date")
         limit = min(max(int(payload.get("limit", 20)), 1), 50)
         if not target_date:
