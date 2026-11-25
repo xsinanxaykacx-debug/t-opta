@@ -1,0 +1,45 @@
+{
+  "status": "fewer_than_10_eligible_fixtures",
+  "fixtures_received": 81,
+  "fixtures_with_complete_odds": 81,
+  "eligible_fixtures": 0,
+  "eligible_match_dates": 0,
+  "eligible_dates_with_10plus": 0,
+  "selected_match_date": null,
+  "picks_exported": 0,
+  "picks_in_group": 0,
+  "selected_bands_from_discovery": [
+    {
+      "band": "81.00%-90.99%",
+      "lower": 0.81,
+      "upper": 0.91,
+      "favorite_type": "MS1",
+      "discovery_matches": 182,
+      "discovery_wins": 162,
+      "discovery_hit_rate": 0.8901098901098901,
+      "discovery_hit_rate_ci95_lower": 0.8363622588840248,
+      "discovery_hit_rate_ci95_upper": 0.927729311571675
+    }
+  ],
+  "selected_odds_source": {
+    "source_counts": {
+      "Avg": 81,
+      "BbAv": 0,
+      "B365": 0
+    },
+    "valid_matches": 81,
+    "source_columns": {
+      "Avg": [
+        "AvgH",
+        "AvgD",
+        "AvgA"
+      ]
+    }
+  },
+  "coupon_count": 0,
+  "coupon_stake_total": 0.0,
+  "coupons": [],
+  "unused_tenth_pick": null,
+  "method": "Market favorite = highest de-vigged 1X2 probability; each 1/odds value is divided by the three-outcome inverse-odds sum. Historical hit rates are reported separately from chronological validation.",
+  "warning": "Only enter odds captured before kickoff. This script does not independently verify odds timestamps or fixture status."
+}

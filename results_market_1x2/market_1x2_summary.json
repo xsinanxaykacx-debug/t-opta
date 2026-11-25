@@ -1,0 +1,104 @@
+{
+  "method": "de-vigged market probabilities: each raw 1 / decimal odds value divided by the complete 1X2 inverse-odds sum; empirical hit rates measured on chronological validation outcomes",
+  "selected_odds_source": {
+    "source_counts": {
+      "Avg": 14169,
+      "BbAv": 0,
+      "B365": 0
+    },
+    "valid_matches": 14169,
+    "source_columns": {
+      "Avg": [
+        "odds_AvgH",
+        "odds_AvgD",
+        "odds_AvgA"
+      ]
+    }
+  },
+  "odds_timestamp_limitation": "The archive does not provide odds capture timestamps; pre-kickoff availability is not independently verified.",
+  "result_label": "FTHG/FTAG used only to derive H/D/A outcome label; never used as a predictor.",
+  "discovery": {
+    "rows": 9933,
+    "start": "2022-07-15 18:30:00+00:00",
+    "end": "2025-03-16 20:30:00+00:00",
+    "matches": 9933,
+    "accuracy": 0.5394140742977952,
+    "mean_confidence": 0.5143736647048835,
+    "mean_margin": 0.054119320837134915,
+    "raw_multiclass_squared_error": 0.5791850137462127
+  },
+  "validation": {
+    "rows": 2112,
+    "start": "2025-03-18 19:45:00+00:00",
+    "end": "2025-11-01 20:30:00+00:00",
+    "matches": 2112,
+    "accuracy": 0.5274621212121212,
+    "mean_confidence": 0.5035336815437164,
+    "mean_margin": 0.06719877008896545,
+    "raw_multiclass_squared_error": 0.5834720339363357
+  },
+  "sealed_holdout": {
+    "rows": 2124,
+    "start": "2025-11-02 11:30:00+00:00",
+    "end": "2026-03-14 20:30:00+00:00",
+    "metrics_not_computed": true
+  },
+  "favorite_hit_rate_discovery": 0.5394140742977952,
+  "favorite_hit_rate_validation": 0.5274621212121212,
+  "favorite_class_counts_validation": {
+    "home": 1460,
+    "draw": 2,
+    "away": 650
+  },
+  "actual_class_counts_validation": {
+    "home": 922,
+    "draw": 518,
+    "away": 672
+  },
+  "probability_definition": "Each outcome probability is its 1 / decimal odds value divided by the sum of all three 1X2 inverse odds; probabilities sum to 100%. Raw implied values and bookmaker margin are retained separately for diagnostics.",
+  "favorite_probability_bands": [
+    "0.00%-49.99%",
+    "50.00%-59.99%",
+    "60.00%-70.99%",
+    "71.00%-80.99%",
+    "81.00%-90.99%",
+    "91.00%-100.00%"
+  ],
+  "selected_candidate_bands_from_discovery": [
+    {
+      "band": "81.00%-90.99%",
+      "lower": 0.81,
+      "upper": 0.91,
+      "favorite_type": "MS1",
+      "discovery_matches": 182,
+      "discovery_wins": 162,
+      "discovery_hit_rate": 0.8901098901098901,
+      "discovery_hit_rate_ci95_lower": 0.8363622588840248,
+      "discovery_hit_rate_ci95_upper": 0.927729311571675
+    }
+  ],
+  "coupon_simulation": {
+    "status": "no_same_day_group_of_10",
+    "candidate_matches": 27,
+    "eligible_match_dates": 0,
+    "minimum_matches_per_date": 10,
+    "simulations_requested": 50,
+    "simulation_count": 0,
+    "unique_fixture_groups": 0,
+    "duplicate_fixture_group_draws": 0,
+    "distinct_fixtures_used": 0,
+    "selected_bands": [
+      {
+        "band": "81.00%-90.99%",
+        "lower": 0.81,
+        "upper": 0.91,
+        "favorite_type": "MS1",
+        "discovery_matches": 182,
+        "discovery_wins": 162,
+        "discovery_hit_rate": 0.8901098901098901,
+        "discovery_hit_rate_ci95_lower": 0.8363622588840248,
+        "discovery_hit_rate_ci95_upper": 0.927729311571675
+      }
+    ]
+  }
+}
