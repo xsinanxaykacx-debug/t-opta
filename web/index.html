@@ -230,7 +230,7 @@ async function loadFixtures(){
   $('empty').classList.add('hidden');
   try{
     const response = await fetch('/api/fixtures/today',{cache:'no-store'});
-    const data = await response.json();
+    const data = await response.json();\n    window.__tOptaMatchRows = data.matches || [];
     if(!response.ok || data.status !== 'success') throw new Error(data.message || 'Veri alınamadı');
     $('matchCount').textContent = data.fixtures_found + ' maç';
     $('totalCount').textContent = data.fixtures_with_odds;
@@ -272,5 +272,5 @@ $('refreshBtn').addEventListener('click',loadFixtures);
 loadFixtures();
 setInterval(loadFixtures, 5 * 60 * 1000);
 </script>
-</body>
+<script src="/similar.js"></script>\n</body>
 </html>
