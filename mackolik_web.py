@@ -4,16 +4,18 @@ import json
 from pathlib import Path
 
 import pandas as pd
-from flask import Flask, abort, jsonify, send_from_directory
+from flask import Flask, abort, jsonify, request, send_from_directory
 
 from mackolik_provider import collect_upcoming
 from market_1x2_analysis import market_probabilities
 from market_1x2_predict import _band_for_probability, predict_upcoming
+from modules.odds_similarity_engine import find_similar_matches
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
 SUMMARY_PATH = ROOT / "results_market_1x2" / "market_1x2_summary.json"
 HISTORICAL_TYPES_PATH = ROOT / "results_market_1x2" / "market_1x2_favorite_types.csv"
+HISTORY_CSV_PATH = ROOT / "xgo.csv"
 OUTPUT_DIR = ROOT / "results_upcoming"
 
 app = Flask(__name__, static_folder=None)
@@ -84,7 +86,6 @@ def _analyze_rows(rows: list[dict]) -> dict:
     frame = pd.DataFrame(rows)
     market, source_info = market_probabilities(frame)
     analyzed = pd.concat([frame.reset_index(drop=True), market.reset_index(drop=True)], axis=1)
-
     selected_pairs = {
         (item.get("band"), item.get("favorite_type"))
         for item in selected_bands
@@ -92,7 +93,7 @@ def _analyze_rows(rows: list[dict]) -> dict:
     }
 
     matches = []
-    for index, row in analyzed.iterrows():
+    for _, row in analyzed.iterrows():
         probabilities = {
             "1": float(row["p_home"]),
             "X": float(row["p_draw"]),
@@ -112,7 +113,6 @@ def _analyze_rows(rows: list[dict]) -> dict:
                 "sample_size": 0, "wins": 0, "losses": 0, "hit_rate_pct": None,
             }),
         }
-        # Keep the independent validation record at top level for compact API consumers.
         historical_performance.update(historical_performance["validation"])
         historical_performance["partition"] = "chronological_validation"
         is_eligible = (band, favorite_type) in selected_pairs
@@ -139,11 +139,9 @@ def _analyze_rows(rows: list[dict]) -> dict:
             "odds_captured_at": str(row.get("OddsCapturedAt", "")),
         })
 
-    # Keep the same production prediction/coupon logic and write its CSV/JSON outputs.
     prediction_summary = predict_upcoming(frame, selected_bands, OUTPUT_DIR)
     eligible = [match for match in matches if match["eligible"]]
     matches.sort(key=lambda item: (item["date"], item["league"], item["home"]))
-
     league_map: dict[str, list[dict]] = {}
     for match in matches:
         league_map.setdefault(match["league"], []).append(match)
@@ -186,7 +184,6 @@ def index():
 @app.get("/api/fixtures/today")
 def fixtures_today():
     try:
-        # Fetch the current day's fixtures only; do not substitute fabricated fallback data.
         rows = collect_upcoming(days=1)
         return jsonify(_analyze_rows(rows))
     except Exception as exc:
@@ -199,6 +196,53 @@ def fixtures_today():
             "leagues": [],
             "matches": [],
         }), 502
+
+
+@app.post("/api/matches/similar")
+def similar_matches():
+    try:
+        payload = request.get_json(silent=True) or {}
+        odds = payload.get("odds") or {}
+        target_date = payload.get("date")
+        limit = min(max(int(payload.get("limit", 20)), 1), 50)
+        if not target_date:
+            return jsonify({"status": "error", "message": "Maç tarihi eksik."}), 400
+        if not HISTORY_CSV_PATH.is_file():
+            return jsonify({
+                "status": "error",
+                "message": "xgo.csv bulunamadı. Geçmiş oran arşivini T-OPTA ana klasörüne koyun.",
+            }), 503
+
+        history = pd.read_csv(HISTORY_CSV_PATH, encoding="latin-1", low_memory=False)
+        similar = find_similar_matches(history, odds, target_date, limit=limit)
+        results = []
+        for row in similar.to_dict(orient="records"):
+            match_date = pd.to_datetime(row.get("Date"), utc=True, errors="coerce")
+            results.append({
+                "date": match_date.strftime("%Y-%m-%d") if pd.notna(match_date) else "",
+                "league": str(row.get("League", "")),
+                "home": str(row.get("HomeTeam", "")),
+                "away": str(row.get("AwayTeam", "")),
+                "score": f'{int(row["FTHG"])}-{int(row["FTAG"])}',
+                "result": str(row.get("actual_result", "")),
+                "odds": {
+                    "1": round(float(row["odds_home"]), 2),
+                    "X": round(float(row["odds_draw"]), 2),
+                    "2": round(float(row["odds_away"]), 2),
+                },
+                "distance_pp": round(float(row["probability_distance_pp"]), 3),
+            })
+        return jsonify({
+            "status": "success",
+            "count": len(results),
+            "matches": results,
+            "note": "Benzerlik, marjdan arındırılmış 1X2 olasılıklarına göre hesaplanır. Arşivde oran yakalama zaman damgası bulunmadığından oranların maç öncesi alındığı bağımsız doğrulanamaz.",
+        })
+    except (TypeError, ValueError) as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    except Exception as exc:
+        app.logger.exception("Similar-match lookup failed")
+        return jsonify({"status": "error", "message": f"Benzer maç analizi yapılamadı: {exc}"}), 500
 
 
 @app.get("/outputs/<filename>")
